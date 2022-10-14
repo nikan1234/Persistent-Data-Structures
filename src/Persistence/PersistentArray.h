@@ -18,7 +18,7 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
     [[nodiscard]] virtual bool contains(std::size_t index) const = 0;
   };
 
-  // Root node_ implementation. Refers to original array.
+  // Root node implementation. Refers to original array.
   class RootNodeImpl final : public INodeImpl {
   public:
     template <class... Args>
@@ -40,7 +40,7 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
     std::vector<T> storage_;
   };
 
-  // Change-set node_ implementation. Contains modified value.
+  // Change-set node implementation. Contains modified value.
   class ChangeSetNodeImpl final : public INodeImpl {
   public:
     template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
@@ -61,7 +61,7 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
     T modified_value;
   };
 
-  // Persistent node_ with specified implementation.
+  // Persistent node with specified implementation.
   class PersistentNode {
   public:
     using Impl = std::unique_ptr<INodeImpl>;
