@@ -110,6 +110,9 @@ public:
   /// Returns size of array
   [[nodiscard]] std::size_t size() const { return size_; }
 
+  /// Returns true is empty
+  [[nodiscard]] bool empty() const { return size_ == 0u; }
+
   /// Returns stored value by index
   /// \param index value index in array
   [[nodiscard]] const T &value(const std::size_t index) const {
