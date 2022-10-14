@@ -8,6 +8,7 @@ include_directories(
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Undo)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Persistence)
 
 add_executable(PersistentDataStructures
     main.cpp
@@ -16,3 +17,4 @@ add_executable(PersistentDataStructures
 target_link_libraries(PersistentDataStructures Common)
 # Uncomment if messesary
 #target_link_libraries(PersistentDataStructures Undo)
+#target_link_libraries(PersistentDataStructures Persistence)
