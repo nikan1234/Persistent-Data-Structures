@@ -136,7 +136,7 @@ public:
     const auto undo = [node = node_, size = size_](auto manager) {
       return PersistentArray{node, size, std::move(manager)};
     };
-    const auto redo = [node = changeSetNode, size = size_](auto manager) {
+    const auto redo = [node = std::move(changeSetNode), size = size_](auto manager) {
       return PersistentArray{node, size, std::move(manager)};
     };
 
