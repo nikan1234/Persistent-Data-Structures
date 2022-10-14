@@ -102,6 +102,11 @@ public:
   PersistentArray(const std::initializer_list<T> &values)
       : PersistentArray(PersistentNode::makeRoot(values), values.size()) {}
 
+  PersistentArray(const PersistentArray &) = delete;
+  PersistentArray(PersistentArray &&) noexcept = delete;
+  PersistentArray &operator=(const PersistentArray &) = delete;
+  PersistentArray &operator=(PersistentArray &&) noexcept = delete;
+
   /// Returns size of array
   [[nodiscard]] std::size_t size() const { return size_; }
 
