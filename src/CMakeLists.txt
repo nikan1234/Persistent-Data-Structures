@@ -2,15 +2,20 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Common)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Undo)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Persistence)
+file(GLOB CommonFiles "Common/*")
+file(GLOB UndoFiles "Undo/*")
 
-add_executable(PersistentDataStructures
+add_library(PersistentDataStructures STATIC 
+  ${CommonFiles}  
+  ${UndoFiles}
+)
+
+source_group("Common" FILES ${CommonFiles})
+source_group("Undo" FILES ${UndoFiles})
+
+
+add_executable(Application
     main.cpp
 )
 
-target_link_libraries(PersistentDataStructures Common)
-# Uncomment if messesary
-#target_link_libraries(PersistentDataStructures Undo)
-#target_link_libraries(PersistentDataStructures Persistence)
+target_link_libraries(Application PersistentDataStructures)
