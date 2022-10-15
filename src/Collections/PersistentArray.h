@@ -2,6 +2,7 @@
 #define PERSISTENT_ARRAY_H
 
 #include <Common/ContractExceptions.h>
+#include <Common/SafeDeref.h>
 #include <Undo/UndoRedoManager.h>
 
 #include <initializer_list>
@@ -102,6 +103,10 @@ public:
   PersistentArray(const std::initializer_list<T> &values)
       : PersistentArray(PersistentNode::makeRoot(values), values.size()) {}
 
+  /// Creates array containing count copies of element value
+  explicit PersistentArray(const std::size_t count, const T &value = T())
+      : PersistentArray(PersistentNode::makeRoot(count, value), count) {}
+
   PersistentArray(const PersistentArray &) = delete;
   PersistentArray(PersistentArray &&) noexcept = delete;
   PersistentArray &operator=(const PersistentArray &) = delete;
@@ -143,14 +148,14 @@ public:
       return PersistentArray{node, size, std::move(manager)};
     };
 
-    return redo(undoRedoManager_.pushUndoAction({undo, redo}));
+    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Appends value to the end of array
   /// \param value value to append
   /// \return array containing appended value
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
-  [[nodiscard]] PersistentArray push_back(U &&value) const {
+  [[nodiscard]] PersistentArray pushBack(U &&value) const {
 
     auto root = node_;
     while (root->getParent())
@@ -172,12 +177,12 @@ public:
     const auto redo = [node = node_, size = size_ + 1](auto manager) {
       return PersistentArray{node, size, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushUndoAction({undo, redo}));
+    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Removes last element from array
   /// \returns array without removed element
-  [[nodiscard]] PersistentArray pop_back() const {
+  [[nodiscard]] PersistentArray popBack() const {
     CONTRACT_EXPECT(size_ > 0);
 
     // Simply decrement size and don't remove value from original array,
@@ -188,7 +193,7 @@ public:
     const auto redo = [node = node_, size = size_ - 1](auto manager) {
       return PersistentArray{node, size, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushUndoAction({undo, redo}));
+    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Undoes last modification operation
