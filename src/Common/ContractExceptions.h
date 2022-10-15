@@ -41,8 +41,6 @@ namespace Detail {
 #define CONTRACT_ASSERT(Expr) CONTRACT_CHECK_INTERNAL(Exceptions::AssertionFailure, Expr)
 #define CONTRACT_ENSURE(Expr) CONTRACT_CHECK_INTERNAL(Exceptions::PostConditionFailure, Expr)
 
-#define SAFE_DEREF(object) *object
-
 } // namespace Exceptions
 
 #endif
