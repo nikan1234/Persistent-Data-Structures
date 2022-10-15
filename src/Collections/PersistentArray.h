@@ -191,11 +191,11 @@ public:
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
     auto &root = findRoot();
     if (root.contains(size_)) {
-      // Value already stored
+      /// Value already stored
       PersistentArray extended{node_, size_ + 1, undoRedoManager_};
       return extended.setValue(size_, value);
     }
-    // Should extend original array with value
+    /// Should extend original array with value
     root.appendValue(value);
 
     const auto undo = [node = node_, size = size_](auto manager) {
@@ -212,8 +212,8 @@ public:
   [[nodiscard]] PersistentArray popBack() const {
     CONTRACT_EXPECT(size_ > 0);
 
-    // Simply decrement size and don't remove value from original array,
-    // since we don't know is this value referenced from another array or not
+    /// Simply decrement size and don't remove value from original array,
+    /// since we don't know is this value referenced from another array or not
     const auto undo = [node = node_, size = size_](auto manager) {
       return PersistentArray{node, size, std::move(manager)};
     };
