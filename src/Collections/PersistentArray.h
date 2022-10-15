@@ -17,13 +17,16 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
   struct NodeImplBase {
     virtual ~NodeImplBase() = default;
 
-    virtual void swapValues(NodeImplBase &other) = 0;
+    /// Checks is node contains element by specified index
     [[nodiscard]] virtual bool contains(std::size_t index) const = 0;
+    /// Access value by index
     [[nodiscard]] virtual const T &value(std::size_t index) const = 0;
     [[nodiscard]] T &value(std::size_t index) {
       const auto &constThis = *this;
       return const_cast<T &>(constThis.value(index));
     }
+    /// Swap values containing this and other nodes
+    virtual void swapValues(NodeImplBase &other) { return other.swapValues(this); }
   };
 
   /// Root node implementation. Refers to original array.
@@ -36,11 +39,6 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
 
     template <class... Args> void append(Args &&...args) {
       storage_.emplace_back(std::forward<Args>(args)...);
-    }
-
-    void swapValues(NodeImplBase &other) override {
-      CONTRACT_EXPECT(!dynamic_cast<RootNodeImpl *>(&other));
-      other.swapValues(*this);
     }
 
     [[nodiscard]] bool contains(const std::size_t index) const override {
@@ -92,17 +90,15 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
     explicit PersistentNode(Impl impl, Ptr parent = nullptr)
         : impl_(std::move(impl)), parent_(std::move(parent)) {}
 
-    [[nodiscard]] bool isRoot() const { return dynamic_cast<RootNodeImpl *>(impl_.get()); }
-
-    [[nodiscard]] const Impl &impl() const { return impl_; }
     [[nodiscard]] const Ptr &parent() const { return parent_; }
+    [[nodiscard]] bool isRoot() const { return dynamic_cast<RootNodeImpl *>(impl_.get()); }
 
     [[nodiscard]] bool contains(std::size_t index) const { return impl_->contains(index); }
     [[nodiscard]] const T &value(std::size_t index) const { return impl_->value(index); }
 
     /// Changes node's parent
-    Ptr reparent(Ptr newParent) {
-      auto oldParent = parent_;
+    [[maybe_unused]] Ptr reparent(Ptr newParent) {
+      auto oldParent = std::move(parent_);
       parent_ = std::move(newParent);
       return oldParent;
     }
@@ -177,7 +173,6 @@ public:
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray setValue(const std::size_t index, U &&value) const {
     CONTRACT_EXPECT(index < size_);
-
     auto changeSetNode = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
 
     const auto undo = [node = node_, size = size_](auto manager) {
@@ -213,7 +208,7 @@ public:
   }
 
   /// Removes last element from array
-  /// \returns array without removed element
+  /// \return array without removed element
   [[nodiscard]] PersistentArray popBack() const {
     CONTRACT_EXPECT(size_ > 0);
 
