@@ -26,7 +26,7 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
       return const_cast<T &>(constThis.value(index));
     }
     /// Swap values containing this and other nodes
-    virtual void swapValues(NodeImplBase &other) { return other.swapValues(this); }
+    virtual void swapValues(NodeImplBase &other) { other.swapValues(*this); }
   };
 
   /// Root node implementation. Refers to original array.
