@@ -11,7 +11,11 @@
 
 namespace Persistence {
 
-template <typename T> class PersistentArray final : public Undo::IUndoable<PersistentArray<T>> {
+template <class T> class PersistentArrayIterator;
+
+/// @PersistentArray
+/// Persistent array implementation.
+template <class T> class PersistentArray final : public Undo::IUndoable<PersistentArray<T>> {
 
   /// Base class for nodes tree implementations
   struct NodeImplBase {
@@ -133,6 +137,10 @@ template <typename T> class PersistentArray final : public Undo::IUndoable<Persi
   };
 
 public:
+  using Value = T;
+  using Iterator = PersistentArrayIterator<T>;
+  using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<T>>;
+
   /// Creates empty array
   PersistentArray() : PersistentArray(PersistentNode::makeRoot(), 0u) {}
 
@@ -235,6 +243,11 @@ public:
     return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
+  [[nodiscard]] Iterator begin() const { return Iterator{*this}; }
+  [[nodiscard]] Iterator end() const { return Iterator{*this, size()}; }
+  [[nodiscard]] ReverseIterator rbegin() const { return ReverseIterator{end()}; }
+  [[nodiscard]] ReverseIterator rend() const { return ReverseIterator{begin()}; }
+
   /// Undoes last modification operation
   [[nodiscard]] PersistentArray undo() const override {
     CONTRACT_EXPECT(undoRedoManager_.hasUndo());
@@ -283,6 +296,124 @@ private:
   }
 };
 
+/// Iterator class for @PersistentArray
+template <class T> class PersistentArrayIterator final {
+  friend class PersistentArray<T>;
+  using PositionIndex = std::size_t;
+
+public:
+  using Value = typename PersistentArray<T>::Value;
+  using Reference = const Value &;
+  using Pointer = const Value *;
+  using Difference = std::make_signed_t<PositionIndex>;
+
+  PersistentArrayIterator(const PersistentArrayIterator &) = default;
+  PersistentArrayIterator &operator=(const PersistentArrayIterator &) = default;
+
+  /// Access to value which iterator points to.
+  [[nodiscard]] Reference operator*() const { return target_->value(currentIndex_); }
+  [[nodiscard]] Pointer operator->() const { return &target_->value(currentIndex_); }
+
+  PersistentArrayIterator &operator++() {
+    CONTRACT_EXPECT(currentIndex_ < target_->size());
+    ++currentIndex_;
+    return *this;
+  }
+
+  PersistentArrayIterator &operator--() {
+    CONTRACT_EXPECT(currentIndex_ > 0);
+    --currentIndex_;
+    return *this;
+  }
+
+  PersistentArrayIterator operator++(int) {
+    PersistentArrayIterator tmp = *this;
+    ++*this;
+    return *this;
+  }
+
+  PersistentArrayIterator &operator--(int) {
+    PersistentArrayIterator tmp = *this;
+    --*this;
+    return *this;
+  }
+
+  PersistentArrayIterator &operator+=(const Difference difference) {
+    CONTRACT_EXPECT(verifyOffset(difference));
+    currentIndex_ += difference;
+    return *this;
+  }
+
+  PersistentArrayIterator &operator-=(const Difference difference) { return *this += -difference; }
+
+  [[nodiscard]] PersistentArrayIterator operator+(const Difference difference) {
+    PersistentArrayIterator tmp = *this;
+    return *this += difference;
+  }
+
+  [[nodiscard]] PersistentArrayIterator operator-(const Difference difference) {
+    PersistentArrayIterator tmp = *this;
+    return *this -= difference;
+  }
+
+  [[nodiscard]] Difference operator-(const PersistentArrayIterator &other) const {
+    return currentIndex_ - other.currentIndex_;
+  }
+
+  [[nodiscard]] bool operator==(const PersistentArrayIterator &other) const {
+    CONTRACT_EXPECT(verifyCompatibility(other));
+    return currentIndex_ == other.currentIndex_;
+  }
+
+  [[nodiscard]] bool operator!=(const PersistentArrayIterator &other) const {
+    return !(currentIndex_ == other.currentIndex_);
+  }
+
+  [[nodiscard]] bool operator<(const PersistentArrayIterator &other) const {
+    CONTRACT_EXPECT(verifyCompatibility(other));
+    return currentIndex_ < other.currentIndex_;
+  }
+
+  [[nodiscard]] bool operator>(const PersistentArrayIterator &other) const { return other < *this; }
+
+  [[nodiscard]] bool operator<=(const PersistentArrayIterator &other) const {
+    return !(this > other);
+  }
+
+  [[nodiscard]] bool operator>=(const PersistentArrayIterator &other) const {
+    return !(this < other);
+  }
+
+private:
+  [[nodiscard]] bool verifyOffset(const Difference difference) const noexcept {
+    if (difference > 0)
+      return difference <= target_->size() - currentIndex_;
+    return -difference <= currentIndex_;
+  }
+
+  [[nodiscard]] bool verifyCompatibility(const PersistentArrayIterator &other) const noexcept {
+    return target_ == other.target_;
+  }
+
+  explicit PersistentArrayIterator(const PersistentArray<T> &target,
+                                   const PositionIndex currentIndex = 0u)
+      : target_(&target), currentIndex_(currentIndex) {}
+
+  const PersistentArray<T> *target_;
+  PositionIndex currentIndex_;
+};
+
 } // namespace Persistence
+
+namespace std {
+/// Specialization for std::iterator_traits
+template <class T> struct iterator_traits<Persistence::PersistentArrayIterator<T>> {
+  using iterator_category = random_access_iterator_tag;
+  using value_type = typename Persistence::PersistentArrayIterator<T>::Value;
+  using pointer = typename Persistence::PersistentArrayIterator<T>::Pointer;
+  using reference = typename Persistence::PersistentArrayIterator<T>::Reference;
+  using difference_type = typename Persistence::PersistentArrayIterator<T>::Difference;
+};
+} // namespace std
 
 #endif
