@@ -156,6 +156,18 @@ public:
   /// Returns true is empty
   [[nodiscard]] bool empty() const { return size_ == 0u; }
 
+  /// Access to first element
+  [[nodiscard]] const T &front() const {
+    CONTRACT_EXPECT(!empty());
+    return value(0);
+  }
+
+  /// Access to last element
+  [[nodiscard]] const T &back() const {
+    CONTRACT_EXPECT(!empty());
+    return value(size_ - 1);
+  }
+
   /// Returns stored value by index
   /// \param index value index in array
   [[nodiscard]] const T &value(const std::size_t index) const {
