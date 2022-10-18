@@ -142,26 +142,34 @@ public:
   using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<T>>;
 
   /// Creates empty array
-  PersistentArray() : PersistentArray(PersistentNode::makeRoot(), 0u) {}
+  PersistentArray() = default;
 
   /// Creates array containing specified values
   /// \param values values to store
   PersistentArray(const std::initializer_list<T> &values)
-      : PersistentArray(PersistentNode::makeRoot(values), values.size()) {}
+      : PersistentArray(values.size(),
+                        !empty(values) ? PersistentNode::makeRoot(values) : nullptr) {}
 
   /// Creates array containing count copies of element value
   explicit PersistentArray(const std::size_t count, const T &value = T())
-      : PersistentArray(PersistentNode::makeRoot(count, value), count) {}
+      : PersistentArray(count, count ? PersistentNode::makeRoot(count, value) : nullptr) {}
+
+  /// Moves array from other to this
+  PersistentArray(PersistentArray &&other) noexcept
+      : PersistentArray(other.size_, std::move(other.node_), std::move(other.undoRedoManager_)) {
+    other.size_ = 0u;
+  }
 
   /// Makes swallow copy of other array
-  PersistentArray(const PersistentArray &other)
-      : PersistentArray(other.node_, other.size_, other.undoRedoManager_) {}
+  PersistentArray &operator=(PersistentArray &&other) noexcept {
+    if (this == &other)
+      return *this;
 
-  /// Makes swallow copy of other array
-  PersistentArray &operator=(const PersistentArray &other) {
-    if (this != &other)
-      std::tie(node_, size_, undoRedoManager_) =
-          std::tie(other.node_, other.size_, other.undoRedoManager_);
+    size_ = other.size_;
+    other.size_ = 0;
+
+    node_ = std::move(other.node_);
+    undoRedoManager_ = std::move(other.undoRedoManager_);
     return *this;
   }
 
@@ -202,11 +210,11 @@ public:
     CONTRACT_EXPECT(index < size_);
     auto changeSetNode = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
 
-    const auto undo = [node = node_, size = size_](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto undo = [size = size_, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [node = std::move(changeSetNode), size = size_](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto redo = [size = size_, node = std::move(changeSetNode)](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
     return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
@@ -216,20 +224,20 @@ public:
   /// \return array containing appended value
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
-    auto &root = findRoot();
+    auto &root = findOrCreateRoot();
     if (root.contains(size_)) {
       /// Value already stored in original array
-      PersistentArray extended{node_, size_ + 1, undoRedoManager_};
+      PersistentArray extended{size_ + 1, node_, undoRedoManager_};
       return extended.setValue(size_, value);
     }
     /// Should extend original array with value
     root.appendValue(value);
 
-    const auto undo = [node = node_, size = size_](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto undo = [size = size_, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [node = node_, size = size_ + 1](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto redo = [size = size_ + 1, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
     return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
@@ -241,11 +249,11 @@ public:
 
     /// Simply decrement size and don't remove value from original array,
     /// since we don't know is this value referenced from another array or not
-    const auto undo = [node = node_, size = size_](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto undo = [size = size_, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [node = node_, size = size_ - 1](auto manager) {
-      return PersistentArray{node, size, std::move(manager)};
+    const auto redo = [size = size_ - 1, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
     };
     return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
   }
@@ -269,14 +277,17 @@ public:
 
 private:
   std::size_t size_ = 0;
-  typename PersistentNode::Ptr node_;
+  mutable typename PersistentNode::Ptr node_; // lazy initialization
   Undo::UndoRedoManager<PersistentArray> undoRedoManager_;
 
-  PersistentArray(typename PersistentNode::Ptr node, const std::size_t size,
-                  Undo::UndoRedoManager<PersistentArray> undoRedoManager = {})
+  explicit PersistentArray(const std::size_t size, typename PersistentNode::Ptr node,
+                           Undo::UndoRedoManager<PersistentArray> undoRedoManager = {})
       : size_(size), node_(std::move(node)), undoRedoManager_(std::move(undoRedoManager)) {}
 
-  [[nodiscard]] PersistentNode &findRoot() const {
+  [[nodiscard]] PersistentNode &findOrCreateRoot() const {
+    if (!node_)
+      return SAFE_DEREF(node_ = PersistentNode::makeRoot());
+
     auto foundNode = node_;
     while (foundNode && !foundNode->isRoot())
       foundNode = foundNode->parent();
