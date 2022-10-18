@@ -153,10 +153,16 @@ public:
   explicit PersistentArray(const std::size_t count, const T &value = T())
       : PersistentArray(PersistentNode::makeRoot(count, value), count) {}
 
-  PersistentArray(const PersistentArray &) = delete;
-  PersistentArray(PersistentArray &&) noexcept = delete;
-  PersistentArray &operator=(const PersistentArray &) = delete;
-  PersistentArray &operator=(PersistentArray &&) noexcept = delete;
+  /// Makes swallow copy of other array
+  PersistentArray(const PersistentArray &other)
+      : PersistentArray(other.node_, other.size_, other.undoRedoManager_) {}
+
+  /// Makes swallow copy of other array
+  PersistentArray &operator=(const PersistentArray &other) {
+    std::tie(node_, size_, undoRedoManager_) =
+        std::tie(other.node_, other.size_, other.undoRedoManager_);
+    return *this;
+  }
 
   /// Returns size of array
   [[nodiscard]] std::size_t size() const { return size_; }
@@ -230,7 +236,7 @@ public:
   /// Removes last element from array
   /// \return array without removed element
   [[nodiscard]] PersistentArray popBack() const {
-    CONTRACT_EXPECT(size_ > 0);
+    CONTRACT_EXPECT(!empty());
 
     /// Simply decrement size and don't remove value from original array,
     /// since we don't know is this value referenced from another array or not
