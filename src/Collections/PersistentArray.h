@@ -203,7 +203,7 @@ public:
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
     auto &root = findRoot();
     if (root.contains(size_)) {
-      /// Value already stored
+      /// Value already stored in original array
       PersistentArray extended{node_, size_ + 1, undoRedoManager_};
       return extended.setValue(size_, value);
     }
@@ -276,10 +276,9 @@ private:
     /// Sift up root and reparent nodes
     while (!path.empty()) {
       root->siftUpRoot(path.top());
-      root = path.top();
+      root->reparent(std::move(path.top()));
       path.pop();
-      if (!path.empty())
-        root->reparent(path.top());
+      root = root->parent();
     }
   }
 };
