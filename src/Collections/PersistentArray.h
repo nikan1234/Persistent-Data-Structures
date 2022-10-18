@@ -159,8 +159,9 @@ public:
 
   /// Makes swallow copy of other array
   PersistentArray &operator=(const PersistentArray &other) {
-    std::tie(node_, size_, undoRedoManager_) =
-        std::tie(other.node_, other.size_, other.undoRedoManager_);
+    if (this != &other)
+      std::tie(node_, size_, undoRedoManager_) =
+          std::tie(other.node_, other.size_, other.undoRedoManager_);
     return *this;
   }
 
