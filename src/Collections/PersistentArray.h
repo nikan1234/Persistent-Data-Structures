@@ -226,18 +226,19 @@ public:
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
     auto &root = findOrCreateRoot();
-    if (root.contains(size_)) {
+
+    auto origin = node_;
+    if (root.contains(size_))
       /// Value already stored in original array
-      PersistentArray extended{size_ + 1, node_, undoRedoManager_};
-      return extended.setValue(size_, value);
-    }
-    /// Should extend original array with value
-    root.appendValue(value);
+      origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
+    else
+      /// Should extend original array with value
+      root.appendValue(std::forward<U>(value));
 
     const auto undo = [size = size_, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [size = size_ + 1, node = node_](auto manager) {
+    const auto redo = [size = size_ + 1, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
     return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
