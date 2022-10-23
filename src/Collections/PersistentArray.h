@@ -116,7 +116,7 @@ template <class T> class PersistentArray final : public Undo::IUndoable<Persiste
     }
 
     /// Appends value to array storage. Applicable only if this is root node.
-    template <class... Args> void appendValue(Args &&...args) {
+    template <class... Args> void extend(Args &&...args) {
       CONTRACT_EXPECT(isRoot());
       dynamic_cast<RootNodeImpl &>(*impl_).getStorage().emplace_back(std::forward<Args>(args)...);
     }
@@ -233,7 +233,7 @@ public:
       origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
     else
       /// Should extend original array with value
-      root.appendValue(std::forward<U>(value));
+      root.extend(std::forward<U>(value));
 
     const auto undo = [size = size_, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
