@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <memory>
+#include <stack>
 
 namespace Persistence {
 
@@ -216,7 +217,7 @@ public:
     const auto redo = [size = size_, node = std::move(changeSetNode)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Appends value to the end of array
@@ -239,7 +240,7 @@ public:
     const auto redo = [size = size_ + 1, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Removes last element from array
@@ -255,7 +256,7 @@ public:
     const auto redo = [size = size_ - 1, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   [[nodiscard]] Iterator begin() const { return Iterator{*this}; }
