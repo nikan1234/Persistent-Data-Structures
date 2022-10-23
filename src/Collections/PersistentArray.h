@@ -209,12 +209,12 @@ public:
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray setValue(const std::size_t index, U &&value) const {
     CONTRACT_EXPECT(index < size_);
-    auto changeSetNode = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
+    auto origin = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
 
     const auto undo = [size = size_, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [size = size_, node = std::move(changeSetNode)](auto manager) {
+    const auto redo = [size = size_, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
     return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
@@ -225,11 +225,9 @@ public:
   /// \return array containing appended value
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
-    auto &root = findOrCreateRoot();
-
     auto origin = node_;
-    if (root.contains(size_))
-      /// Value already stored in original array
+    if (auto &root = findOrCreateRoot(); root.contains(size_))
+      /// Should create change-set
       origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
     else
       /// Should extend original array with value
