@@ -42,10 +42,6 @@ template <class T> class PersistentArray final : public Undo::IUndoable<Persiste
     template <class... Args>
     explicit RootNodeImpl(Args &&...args) : storage_(std::forward<Args>(args)...) {}
 
-    template <class... Args> void append(Args &&...args) {
-      storage_.emplace_back(std::forward<Args>(args)...);
-    }
-
     [[nodiscard]] bool contains(const std::size_t index) const override {
       return index < storage_.size();
     }
@@ -225,8 +221,11 @@ public:
   /// \return array containing appended value
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
+    auto &root = findOrCreateRoot();
+    CONTRACT_ASSERT(node_);
+
     auto origin = node_;
-    if (auto &root = findOrCreateRoot(); root.contains(size_))
+    if (root.contains(size_))
       /// Should create change-set
       origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
     else
