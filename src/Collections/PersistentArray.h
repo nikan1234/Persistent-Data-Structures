@@ -16,6 +16,10 @@ template <class T> class PersistentArrayIterator;
 
 /// @PersistentArray
 /// Persistent array implementation.
+/// A more efficient way of implementing Fully Persistent Arrays is by using a single instance of an
+/// in-memory Array and in conjunction use a tree of modifications. Instead of storing all the
+/// versions separately, Backer's trick allows us to compute any version of the array by replaying
+/// all the changes asked for.
 template <class T> class PersistentArray final : public Undo::IUndoable<PersistentArray<T>> {
 
   /// Base class for nodes tree implementations
