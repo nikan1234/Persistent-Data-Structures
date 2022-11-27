@@ -210,6 +210,25 @@ private:
   };
 };
 
+template <class Key, class Value, class Hash, class KeyEq>
+[[nodiscard]] bool operator==(const PersistentHashMap<Key, Value, Hash, KeyEq> &lhs,
+                              const PersistentHashMap<Key, Value, Hash, KeyEq> &rhs) {
+  if (lhs.size() != rhs.size())
+    return false;
+
+  for (const auto &lhsValue : lhs)
+    if (const auto rhsValue = rhs.find(lhsValue.first);
+        !(rhsValue && rhsValue->get() == lhsValue.second))
+      return false;
+  return true;
+}
+
+template <class Key, class Value, class Hash, class KeyEq>
+[[nodiscard]] bool operator!=(const PersistentHashMap<Key, Value, Hash, KeyEq> &lhs,
+                              const PersistentHashMap<Key, Value, Hash, KeyEq> &rhs) {
+  return !(lhs == rhs);
+}
+
 } // namespace Persistence
 
 namespace std {

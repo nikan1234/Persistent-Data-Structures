@@ -306,6 +306,18 @@ private:
   }
 };
 
+template <class T>
+[[nodiscard]] bool operator==(const PersistentArray<T> &lhs, const PersistentArray<T> &rhs) {
+  if (lhs.size() != rhs.size())
+    return false;
+  return std::equal(lhs.begin(), lhs.end(), rhs.begin());
+}
+
+template <class T>
+[[nodiscard]] bool operator!=(const PersistentArray<T> &lhs, const PersistentArray<T> &rhs) {
+  return !(lhs == rhs);
+}
+
 /// Iterator class for @PersistentArray
 template <class T> class PersistentArrayIterator final {
   friend class PersistentArray<T>;
