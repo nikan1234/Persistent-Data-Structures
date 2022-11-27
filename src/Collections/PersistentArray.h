@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <initializer_list>
 #include <memory>
+#include <stack>
 
 namespace Persistence {
 
@@ -15,6 +16,10 @@ template <class T> class PersistentArrayIterator;
 
 /// @PersistentArray
 /// Persistent array implementation.
+/// A more efficient way of implementing Fully Persistent Arrays is by using a single instance of an
+/// in-memory Array and in conjunction use a tree of modifications. Instead of storing all the
+/// versions separately, Backer's trick allows us to compute any version of the array by replaying
+/// all the changes asked for.
 template <class T> class PersistentArray final : public Undo::IUndoable<PersistentArray<T>> {
 
   /// Base class for nodes tree implementations
@@ -40,10 +45,6 @@ template <class T> class PersistentArray final : public Undo::IUndoable<Persiste
 
     template <class... Args>
     explicit RootNodeImpl(Args &&...args) : storage_(std::forward<Args>(args)...) {}
-
-    template <class... Args> void append(Args &&...args) {
-      storage_.emplace_back(std::forward<Args>(args)...);
-    }
 
     [[nodiscard]] bool contains(const std::size_t index) const override {
       return index < storage_.size();
@@ -115,7 +116,7 @@ template <class T> class PersistentArray final : public Undo::IUndoable<Persiste
     }
 
     /// Appends value to array storage. Applicable only if this is root node.
-    template <class... Args> void appendValue(Args &&...args) {
+    template <class... Args> void extend(Args &&...args) {
       CONTRACT_EXPECT(isRoot());
       dynamic_cast<RootNodeImpl &>(*impl_).getStorage().emplace_back(std::forward<Args>(args)...);
     }
@@ -208,15 +209,15 @@ public:
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray setValue(const std::size_t index, U &&value) const {
     CONTRACT_EXPECT(index < size_);
-    auto changeSetNode = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
+    auto origin = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
 
     const auto undo = [size = size_, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [size = size_, node = std::move(changeSetNode)](auto manager) {
+    const auto redo = [size = size_, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Appends value to the end of array
@@ -225,21 +226,23 @@ public:
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
   [[nodiscard]] PersistentArray pushBack(U &&value) const {
     auto &root = findOrCreateRoot();
-    if (root.contains(size_)) {
-      /// Value already stored in original array
-      PersistentArray extended{size_ + 1, node_, undoRedoManager_};
-      return extended.setValue(size_, value);
-    }
-    /// Should extend original array with value
-    root.appendValue(value);
+    CONTRACT_ASSERT(node_);
+
+    auto origin = node_;
+    if (root.contains(size_))
+      /// Should create change-set
+      origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
+    else
+      /// Should extend original array with value
+      root.extend(std::forward<U>(value));
 
     const auto undo = [size = size_, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    const auto redo = [size = size_ + 1, node = node_](auto manager) {
+    const auto redo = [size = size_ + 1, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Removes last element from array
@@ -255,7 +258,7 @@ public:
     const auto redo = [size = size_ - 1, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushAction(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   [[nodiscard]] Iterator begin() const { return Iterator{*this}; }

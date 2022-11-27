@@ -7,7 +7,6 @@
 
 #include <array>
 #include <functional>
-#include <stack>
 
 namespace Undo {
 
@@ -16,6 +15,7 @@ template <class Collection> class UndoRedoManager;
 /// Interface for undo/redo actions used by @UndoRedoManager
 template <class Collection> class IUndoRedoAction {
 public:
+  using Ptr = std::shared_ptr<IUndoRedoAction>;
   virtual ~IUndoRedoAction() = default;
 
 protected:
@@ -54,18 +54,59 @@ template <class Collection, class UndoHandler, class RedoHandler>
 
 /// Class to store and manage undo/redo operations
 template <class Collection> class UndoRedoManager final : public IUndoable<Collection> {
+  using ActionPtr = typename IUndoRedoAction<Collection>::Ptr;
+
+  /// Persistent implementation for undo/redo stack for efficient memory usage.
+  class UndoRedoStack final {
+    struct Entry {
+      using Ptr = std::shared_ptr<Entry>;
+      explicit Entry(ActionPtr action, Ptr next = nullptr)
+          : action(std::move(action)), next(std::move(next)) {}
+
+      ActionPtr action;
+      Ptr next;
+    };
+
+  public:
+    UndoRedoStack(typename Entry::Ptr top = nullptr) : top_(std::move(top)) {}
+
+    /// Pop action from stack
+    [[nodiscard]] UndoRedoStack pop() const {
+      return top_ ? UndoRedoStack{top_->next} : UndoRedoStack{};
+    }
+
+    /// Push action into stack
+    [[nodiscard]] UndoRedoStack push(ActionPtr action) const {
+      return UndoRedoStack{std::make_shared<Entry>(std::move(action), top_)};
+    }
+
+    /// Returns true if empty
+    [[nodiscard]] bool empty() const { return !top_; }
+
+    /// Returns top action
+    [[nodiscard]] const auto &top() const {
+      CONTRACT_EXPECT(!empty());
+      return top_->action;
+    }
+
+  private:
+    typename Entry::Ptr top_;
+  };
+
+  /// Manager contains two stacks for undo and redo actions
+  UndoRedoManager(UndoRedoStack undoStack, UndoRedoStack redoStack)
+      : undoStack_(std::move(undoStack)), redoStack_(std::move(redoStack)) {}
+
 public:
-  using ActionPtr = std::shared_ptr<IUndoRedoAction<Collection>>;
+  /// Creates new manager
+  UndoRedoManager() = default;
 
   /// Adds new undo/redo action. Clears redo stack.
   /// \param undoRedoAction
   /// Returns new manager and leaves current manager unchanged.
-  [[nodiscard]] UndoRedoManager pushAction(ActionPtr undoRedoAction) const {
+  [[nodiscard]] UndoRedoManager pushUndo(ActionPtr undoRedoAction) const {
     CONTRACT_EXPECT(undoRedoAction);
-    auto managerCopy = *this;
-    managerCopy.undoStack_.push(undoRedoAction);
-    managerCopy.redoStack_ = {};
-    return managerCopy;
+    return UndoRedoManager{undoStack_.push(std::move(undoRedoAction)), {}};
   }
 
   /// Checks that undo stack in not empty
@@ -76,27 +117,23 @@ public:
   /// Undoes recent action
   [[nodiscard]] Collection undo() const override {
     CONTRACT_EXPECT(hasUndo());
-    auto copyManager = *this;
     auto &recentAction = SAFE_DEREF(undoStack_.top());
-    moveRecentAction(copyManager.undoStack_, copyManager.redoStack_);
-    return recentAction.applyUndo(std::move(copyManager));
+    auto [undo, redo] = moveRecentAction(undoStack_, redoStack_);
+    return recentAction.applyUndo(UndoRedoManager{std::move(undo), std::move(redo)});
   }
+
   /// Redoes recent action
   [[nodiscard]] Collection redo() const override {
     CONTRACT_EXPECT(hasRedo());
-    auto copyManager = *this;
     auto &recentAction = SAFE_DEREF(redoStack_.top());
-    moveRecentAction(copyManager.redoStack_, copyManager.undoStack_);
-    return recentAction.applyRedo(std::move(copyManager));
+    auto [redo, undo] = moveRecentAction(redoStack_, undoStack_);
+    return recentAction.applyRedo(UndoRedoManager{std::move(undo), std::move(redo)});
   }
 
 private:
-  using UndoRedoStack = std::stack<ActionPtr>;
-
-  static void moveRecentAction(UndoRedoStack &source, UndoRedoStack &target) {
+  static auto moveRecentAction(const UndoRedoStack &source, const UndoRedoStack &target) {
     auto action = source.top();
-    source.pop();
-    target.push(std::move(action));
+    return std::make_pair(source.pop(), target.push(std::move(action)));
   }
 
   UndoRedoStack undoStack_;

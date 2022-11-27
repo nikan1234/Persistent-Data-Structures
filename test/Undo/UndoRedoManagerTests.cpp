@@ -47,7 +47,7 @@ TEST(UndoRedoManagerTest, TestDefaultConstructed) {
 
 TEST(UndoRedoManagerTest, TestPushAction) {
   const UndoRedoManager<FakeUndoableCollection> manager;
-  const auto withUndo = manager.pushAction(UndoRedoActionMock::create());
+  const auto withUndo = manager.pushUndo(UndoRedoActionMock::create());
 
   EXPECT_FALSE(manager.hasUndo());
   EXPECT_FALSE(manager.hasRedo());
@@ -61,7 +61,7 @@ TEST(UndoRedoManagerTest, TestUndoRedo) {
   action->expectRedo();
 
   const auto originalManager =
-      UndoRedoManager<FakeUndoableCollection>{}.pushAction(std::move(action));
+      UndoRedoManager<FakeUndoableCollection>{}.pushUndo(std::move(action));
 
   // Collection returned with undo() contains manager with redo action.
   const auto [undidType, undidManager] = originalManager.undo();
@@ -80,7 +80,7 @@ TEST(UndoRedoManagerTest, TestPushActionWithRedo) {
   auto action = UndoRedoActionMock::create();
   action->expectUndo();
   const auto originalManager =
-      UndoRedoManager<FakeUndoableCollection>{}.pushAction(std::move(action));
+      UndoRedoManager<FakeUndoableCollection>{}.pushUndo(std::move(action));
 
   const auto [undidType, undidManager] = originalManager.undo();
   EXPECT_EQ(undidType, FakeUndoableCollection::Type::ReturnedFromUndo);
@@ -88,7 +88,7 @@ TEST(UndoRedoManagerTest, TestPushActionWithRedo) {
   EXPECT_TRUE(undidManager.hasRedo());
 
   // If we add undo action, then redo actions should be removed
-  const auto otherManager = undidManager.pushAction(UndoRedoActionMock::create());
+  const auto otherManager = undidManager.pushUndo(UndoRedoActionMock::create());
   EXPECT_TRUE(otherManager.hasUndo());
   EXPECT_FALSE(otherManager.hasRedo());
 }
