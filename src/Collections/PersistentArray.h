@@ -1,11 +1,11 @@
 #ifndef PERSISTENT_ARRAY_H
 #define PERSISTENT_ARRAY_H
 
+#include "UndoablePersistentCollection.h"
+
 #include <Common/ContractExceptions.h>
 #include <Common/SafeDeref.h>
-#include <Undo/UndoRedoManager.h>
 
-#include <algorithm>
 #include <initializer_list>
 #include <memory>
 #include <stack>
@@ -20,7 +20,10 @@ template <class T> class PersistentArrayIterator;
 /// in-memory Array and in conjunction use a tree of modifications. Instead of storing all the
 /// versions separately, Backer's trick allows us to compute any version of the array by replaying
 /// all the changes asked for.
-template <class T> class PersistentArray final : public Undo::IUndoable<PersistentArray<T>> {
+template <class T>
+class PersistentArray final : public UndoablePersistentCollection<PersistentArray<T>> {
+
+  using Base = UndoablePersistentCollection<PersistentArray>;
 
   /// Base class for nodes tree implementations
   struct NodeImplBase {
@@ -149,28 +152,27 @@ public:
   /// \param values values to store
   PersistentArray(const std::initializer_list<T> &values)
       : PersistentArray(values.size(),
-                        !empty(values) ? PersistentNode::makeRoot(values) : nullptr) {}
+                        !std::empty(values) ? PersistentNode::makeRoot(values) : nullptr) {}
 
   /// Creates array containing count copies of element value
   explicit PersistentArray(const std::size_t count, const T &value = T())
       : PersistentArray(count, count ? PersistentNode::makeRoot(count, value) : nullptr) {}
 
-  /// Moves array from other to this
+  /// Constructs array from other
   PersistentArray(PersistentArray &&other) noexcept
-      : PersistentArray(other.size_, std::move(other.node_), std::move(other.undoRedoManager_)) {
+      : PersistentArray(other.size_, std::move(other.node_), std::move(other.undoManager())) {
     other.size_ = 0u;
   }
 
-  /// Makes swallow copy of other array
+  /// Moves array from other to this
   PersistentArray &operator=(PersistentArray &&other) noexcept {
     if (this == &other)
       return *this;
 
+    node_ = std::move(other.node_);
     size_ = other.size_;
     other.size_ = 0;
-
-    node_ = std::move(other.node_);
-    undoRedoManager_ = std::move(other.undoRedoManager_);
+    static_cast<Base &>(*this) = std::move(other);
     return *this;
   }
 
@@ -217,7 +219,7 @@ public:
     const auto redo = [size = size_, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Appends value to the end of array
@@ -242,7 +244,7 @@ public:
     const auto redo = [size = size_ + 1, node = std::move(origin)](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   /// Removes last element from array
@@ -258,7 +260,7 @@ public:
     const auto redo = [size = size_ - 1, node = node_](auto manager) {
       return PersistentArray{size, node, std::move(manager)};
     };
-    return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
   [[nodiscard]] Iterator begin() const { return Iterator{*this}; }
@@ -266,26 +268,13 @@ public:
   [[nodiscard]] ReverseIterator rbegin() const { return ReverseIterator{end()}; }
   [[nodiscard]] ReverseIterator rend() const { return ReverseIterator{begin()}; }
 
-  /// Undoes last modification operation
-  [[nodiscard]] PersistentArray undo() const override {
-    CONTRACT_EXPECT(undoRedoManager_.hasUndo());
-    return undoRedoManager_.undo();
-  }
-
-  /// Redoes last modification operation
-  [[nodiscard]] PersistentArray redo() const override {
-    CONTRACT_EXPECT(undoRedoManager_.hasRedo());
-    return undoRedoManager_.redo();
-  }
-
 private:
   std::size_t size_ = 0;
   mutable typename PersistentNode::Ptr node_; // lazy initialization
-  Undo::UndoRedoManager<PersistentArray> undoRedoManager_;
 
   explicit PersistentArray(const std::size_t size, typename PersistentNode::Ptr node,
                            Undo::UndoRedoManager<PersistentArray> undoRedoManager = {})
-      : size_(size), node_(std::move(node)), undoRedoManager_(std::move(undoRedoManager)) {}
+      : Base(std::move(undoRedoManager)), size_(size), node_(std::move(node)) {}
 
   [[nodiscard]] PersistentNode &findOrCreateRoot() const {
     if (!node_)

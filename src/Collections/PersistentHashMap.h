@@ -1,20 +1,23 @@
 #ifndef PERSISTENT_DICT_H
 #define PERSISTENT_DICT_H
 
+#include "UndoablePersistentCollection.h"
+
 #include <Collections/HamtUtils.h>
 #include <Common/ContractExceptions.h>
-#include <Undo/UndoRedoManager.h>
 
 #include <memory>
 #include <optional>
-#include <queue>
 
 namespace Persistence {
 
 /// @class PersistentHashMap
 /// A persistent rendition of Hash Array Mapped Trie. Uses path copying for persistence.
 template <class Key, class Value, class Hash = std::hash<Key>, class KeyEq = std::equal_to<Key>>
-class PersistentHashMap {
+class PersistentHashMap final
+    : public UndoablePersistentCollection<PersistentHashMap<Key, Value, Hash, KeyEq>> {
+
+  using Base = UndoablePersistentCollection<PersistentHashMap>;
 
   /// Settings for HAMT storage
   struct HamtTraits {
@@ -35,8 +38,24 @@ public:
   using Iterator = PersistentHashMapIterator;
 
   PersistentHashMap() = default;
-  PersistentHashMap(PersistentHashMap &&) noexcept = default;
-  PersistentHashMap &operator=(PersistentHashMap &&) noexcept = default;
+
+  /// Constructs array from other
+  PersistentHashMap(PersistentHashMap &&other) noexcept
+      : PersistentHashMap(other.size_, std::move(other.hamtRoot_), std::move(other.undoManager())) {
+    other.size_ = 0u;
+  }
+
+  /// Moves array from other to this
+  PersistentHashMap &operator=(PersistentHashMap &&other) noexcept {
+    if (this == &other)
+      return *this;
+
+    hamtRoot_ = std::move(other.hamtRoot_);
+    size_ = other.size_;
+    other.size_ = 0;
+    static_cast<Base &>(*this) = std::move(other);
+    return *this;
+  }
 
   /// Returns size of map
   [[nodiscard]] std::size_t size() const noexcept { return size_; }
@@ -44,7 +63,7 @@ public:
   [[nodiscard]] bool empty() const noexcept { return size_ == 0u; }
 
   /// Inserts new node into map
-  /// \param keyValue key-value to insertBit
+  /// \param keyValue key-value to insert
   /// \param replace if true then replaces previously stored values
   [[nodiscard]] PersistentHashMap insert(const KeyValue &keyValue,
                                          const bool replace = true) const {
@@ -54,7 +73,7 @@ public:
   }
 
   /// Erases key from map. Does nothing if key absent.
-  /// \param key key to eraseBit
+  /// \param key key to erase
   [[nodiscard]] PersistentHashMap erase(const Key &key) const {
     Detail::EraserVisitor<HamtTraits> eraser{key};
     return modifyHamt(eraser, nullptr, size_ - 1);
@@ -89,15 +108,14 @@ private:
 
   std::size_t size_ = 0u;
   HamtRoot hamtRoot_;
-  UndoManager undoRedoManager_;
 
   explicit PersistentHashMap(const std::size_t size, HamtRoot hamtRoot,
                              UndoManager undoRedoManager = {})
-      : size_(size), hamtRoot_(std::move(hamtRoot)), undoRedoManager_(std::move(undoRedoManager)) {
-    CONTRACT_ENSURE(hamtRoot_);
-  }
+      : Base(std::move(undoRedoManager)), size_(size), hamtRoot_(std::move(hamtRoot)) {}
 
-  [[nodiscard]] PersistentHashMap modifyHamt(Detail::HamtVisitorBase<HamtTraits> &visitor,
+  /// Modifies HAMT with visitor. If HAMT ie empty, initializes it with default value.
+  /// Produces undoable action.
+  [[nodiscard]] PersistentHashMap modifyHamt(Detail::IHamtVisitor<HamtTraits> &visitor,
                                              const Detail::HamtNodeSPtr<HamtTraits> &defaultValue,
                                              const std::size_t modificationSize) const {
 
@@ -111,10 +129,10 @@ private:
         return PersistentHashMap{size, root, std::move(manager)};
       };
 
-      // HAMT was actually modified
-      return redo(undoRedoManager_.pushUndo(Undo::createAction<PersistentHashMap>(undo, redo)));
+      /// HAMT was actually modified
+      return redo(this->undoManager().pushUndo(Undo::createAction<PersistentHashMap>(undo, redo)));
     }
-    // HAMT not changed (e.g. eraseBit of non-existing key)
+    /// HAMT not changed (e.g. erase of non-existing key)
     return returnUnchangedWithUndo();
   }
 
@@ -122,11 +140,12 @@ private:
     const auto returnCopy = [size = size_, root = hamtRoot_](auto manager) {
       return PersistentHashMap{size, root, std::move(manager)};
     };
-    return PersistentHashMap{
-        size_, hamtRoot_,
-        undoRedoManager_.pushUndo(Undo::createAction<PersistentHashMap>(returnCopy, returnCopy))};
+    return PersistentHashMap{size_, hamtRoot_,
+                             this->undoManager().pushUndo(
+                                 Undo::createAction<PersistentHashMap>(returnCopy, returnCopy))};
   }
 
+  /// @class PersistentHashMapIterator
   /// Implementation of iterator
   class PersistentHashMapIterator {
   public:
