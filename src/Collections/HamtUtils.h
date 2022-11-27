@@ -78,7 +78,6 @@ public:
   [[nodiscard]] std::size_t childrenCount() const noexcept override { return children_.size(); }
 
 private:
-  HamtNodeWPtr<Traits> parent_;
   HamtNodeList<Traits> children_;
 };
 
