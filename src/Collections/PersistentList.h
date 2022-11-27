@@ -1,5 +1,8 @@
 #ifndef PERSISTENT_LIST_H
 #define PERSISTENT_LIST_H
+
+#include <Undo/UndoRedoManager.h>
+
 #include <vector>
 #include <list>
 #include <algorithm>
@@ -18,6 +21,10 @@ struct ListOrder {
   std::vector<double> weight_true;
   std::vector<double> weight_reverse;
   ListOrder(){};
+
+  // добавить версию и противоположную ей версию
+  // parent - версия-родитель для новой версии. При первом вызове аргумент не учитывается
+  // возвращает номер новой версии
   int add(int parent) {
     if (list.size() == 0) {
       handles.push_back(list.insert(list.end(), 1));
@@ -64,6 +71,8 @@ struct ListOrder {
     }
     return new_version;
   }
+
+  // определяет, предшествует ли версия l версии r в списке версий
   bool less(int l, int r) { 
       assert(abs(l) < weight_true.size(), "ListOrder, l < weidht_true.size()");
       assert(abs(r) < weight_true.size(), "ListOrder, r < weidht_reverse.size()");
@@ -91,9 +100,7 @@ struct CmpByListVersion {
       return listOrder_ -> less(a, b); }
 };
 
-typedef int T;
-
-struct ListNode {
+template <class T> struct ListNode {
   static const int MAX_SIZE_FAT_NODE = 10;
 
   std::map<int, std::shared_ptr<ListNode>, CmpByListVersion> next_;
@@ -121,7 +128,15 @@ struct ListNode {
     last_[version] = last;
   }
 
-  bool Add(int version, const T& value) {
+  bool operator==(const ListNode &other) const {
+    return next_ == other.next_ && last_ == other.last_ && value_ == other.value_;
+  }
+
+  bool operator!=(const ListNode &other) const {
+    return next_ != other.next_ || last_ != other.last_ || value_ != other.value_;
+  }
+
+  bool add(int version, const T& value) {
     if (value_.size() >= MAX_SIZE_FAT_NODE) {
       return false;
     }
@@ -130,53 +145,53 @@ struct ListNode {
   }
 
   // будем в head и tail добавлять в любом случае value_.size() == 0 
-  bool CanSetNext() { return value_.size() == 0 || next_.size() < MAX_SIZE_FAT_NODE; }
+  bool canSetNext() { return value_.size() == 0 || next_.size() < MAX_SIZE_FAT_NODE; }
 
-  bool CanSetLast() { return value_.size() == 0 || last_.size() < MAX_SIZE_FAT_NODE; }
+  bool canSetLast() { return value_.size() == 0 || last_.size() < MAX_SIZE_FAT_NODE; }
 
-  bool SetNext(int version, std::shared_ptr<ListNode> next) { 
-      if (!CanSetNext() && next_.find(version) == next_.end()) {
+  bool setNext(int version, std::shared_ptr<ListNode> next) { 
+      if (!canSetNext() && next_.find(version) == next_.end()) {
         return false;
       }
       next_[version] = next; 
       return true;
   }
 
-  bool SetLast(int version, std::shared_ptr<ListNode> last) { 
-      if (!CanSetLast() && last_.find(version) == last_.end()) {
+  bool setLast(int version, std::shared_ptr<ListNode> last) { 
+      if (!canSetLast() && last_.find(version) == last_.end()) {
         return false;
       }
       last_[version] = last;
       return true;
   }
 
-  void CopyNextAfter(std::shared_ptr<ListNode> src, int version) { 
+  void copyNextAfter(std::shared_ptr<ListNode> src, int version) { 
       for (auto i = src->next_.lower_bound(version); i != src->next_.end(); ++i) {
         this->next_[i->first] = src->next_[i->first];
       }
   }
 
-   void CopyLastAfter(std::shared_ptr<ListNode> src, int version) {
+   void copyLastAfter(std::shared_ptr<ListNode> src, int version) {
      for (auto i = src->last_.lower_bound(version); i != src->last_.end(); ++i) {
       this->last_[i->first] = src->last_[i->first];
      }
   }
 
-  T Find(int version) const {
+  T find(int version) const {
     assert(!value_.empty(), "value_ in ListNode is empty. It is strange");
     auto it = value_.upper_bound(version);
     --it;
     return it -> second;
   }
 
-  std::shared_ptr<ListNode> GetNext(int version) const {
+  std::shared_ptr<ListNode> getNext(int version) const {
     assert(!next_.empty(), "next_ in ListNode is empty. It is strange");
     auto it = next_.upper_bound(version);
     --it;
     return it->second;
   }
 
-  std::shared_ptr<ListNode> GetLast(int version) const {
+  std::shared_ptr<ListNode> getLast(int version) const {
     assert(!last_.empty(), "last_ in ListNode is empty. It is strange");
     auto it = last_.upper_bound(version);
     --it;
@@ -184,35 +199,124 @@ struct ListNode {
   }
 };
 
-class PersistentList final {
+template <class T> class ListIterator final { 
+  int version_;
+  std::shared_ptr<ListNode<T>> node_;
+
+  public:
+  ListIterator(int version, const std::shared_ptr<ListNode<T>> &node)
+      : version_(version), node_(node) {}
+
+  T operator*() const { return node_->find(version_); }
+  ListNode<T> operator->() const { return node_; }
+
+  ListIterator &operator++() {
+    node_ = node_->getNext(version_);
+    return *this;
+  }
+
+  ListIterator& operator--() {
+    node_ = node_->getLast(version_);
+    return *this;
+  }
+
+  ListIterator operator++(int) {
+    node_ = node_->getNext(version_);
+    return *this;
+  }
+
+  ListIterator &operator--(int) {
+    node_ = node_->getLast(version_);
+    return *this;
+  }
+
+  bool operator==(const ListIterator &other) const {
+    return version_ == other.version_ && node_ == other.node_;
+  }
+
+  bool operator!=(const ListIterator &other) const {
+    return version_ != other.version_ || node_ != other.node_;
+  }
+};
+
+template <class T> class ListReverseIterator final {
+  int version_;
+  std::shared_ptr<ListNode<T>> node_;
+
+public:
+  ListReverseIterator(int version, const std::shared_ptr<ListNode<T>> &node)
+      : version_(version), node_(node) {}
+
+  T operator*() const { return node_->find(version_); }
+  ListNode<T> operator->() const { return node_; }
+
+  ListReverseIterator &operator--() {
+    node_ = node_->getNext(version_);
+    return *this;
+  }
+
+  ListReverseIterator &operator++() {
+    node_ = node_->getLast(version_);
+    return *this;
+  }
+
+  ListReverseIterator operator--(int) {
+    node_ = node_->getNext(version_);
+    return *this;
+  }
+
+  ListReverseIterator &operator++(int) {
+    node_ = node_->getLast(version_);
+    return *this;
+  }
+
+  bool operator==(const ListReverseIterator &other) const {
+    return version_ == other.version_ && node_ == other.node_;
+  }
+
+  bool operator!=(const ListReverseIterator &other) const {
+    return version_ != other.version_ || node_ != other.node_;
+  }
+};
+
+template <class T> class PersistentList final : public Undo::IUndoable<PersistentList<T>> {
 private:
   int version_;
   std::shared_ptr<ListOrder> listOrder_;
   // head_, tail_ - специальный ноды без значений
-  std::shared_ptr<ListNode> head_;
-  std::shared_ptr<ListNode> tail_;
+  std::shared_ptr<ListNode <T>> head_;
+  std::shared_ptr<ListNode <T>> tail_;
   size_t size_;
+  Undo::UndoRedoManager<PersistentList> undoRedoManager_;
 
-  PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode> head,
-                 std::shared_ptr<ListNode> tail, size_t size_)
-      : version_(version), listOrder_(listOrder), head_(head), tail_(tail), size_(size_) {
+  PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode <T>> head, std::shared_ptr<ListNode<T>> tail, size_t size_,
+                 Undo::UndoRedoManager<PersistentList> undoRedoManager)
+      : version_(version), listOrder_(listOrder), head_(head), tail_(tail), size_(size_),
+        undoRedoManager_(undoRedoManager) {
   }
 
-  PersistentList GetChildren(int new_version, size_t size) {
-    return PersistentList(new_version, listOrder_, head_, tail_, size);
+  PersistentList<T> getChildren(int new_version, size_t size) const {
+    const auto undo = [version = version_, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size_](auto manager) {
+      return PersistentList{version, listOrder, head, tail, size_undo, manager};
+    };
+    const auto redo = [version = new_version, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size](auto manager) {
+      return PersistentList{version, listOrder, head, tail, size_undo, manager};
+    };
+    Undo::UndoRedoManager<PersistentList> newUndoRedoManager = undoRedoManager_.pushUndo(Undo::createAction<PersistentList>(undo, redo));
+    return PersistentList<T>(new_version, listOrder_, head_, tail_, size, newUndoRedoManager);
   }
 
-  std::shared_ptr<ListNode> FindNodeByIndex(int version, int index) const {
+  std::shared_ptr<ListNode <T>> findNodeByIndex(int version, int index) const {
     if (index >= size_) {
       throw std::exception("index more size");
     }
-    std::shared_ptr<ListNode> ptr = head_;
+    std::shared_ptr<ListNode <T>> ptr = head_;
     ++index; //потому что head_ без знечения
     for (int i = 0; i < index; ++i) {
       if (ptr == nullptr) {
         throw std::exception("not value by index for current version");
       }
-      ptr = ptr->GetNext(version);
+      ptr = ptr->getNext(version);
     }
     if (ptr == nullptr) {
       throw std::exception("not value by index for current version");
@@ -220,165 +324,177 @@ private:
     return ptr;
   }
 
-  std::shared_ptr<ListNode> FindNodeByIndex(int index) const {
-    return FindNodeByIndex(version_, index);
+  std::shared_ptr<ListNode <T>> findNodeByIndex(int index) const {
+    return findNodeByIndex(version_, index);
   }
 
   // делает новую Node, когда старая становится слишком толстой
-  void MakeNewNode(int version, const T &value, std::shared_ptr<ListNode> last,
-                   std::shared_ptr<ListNode> next) {
-    std::shared_ptr<ListNode> new_node =
-        std::make_shared<ListNode>(version, value, nullptr, nullptr, CmpByListVersion(listOrder_));
+  void makeNewNode(int version, const T &value, std::shared_ptr<ListNode <T>> last,
+                   std::shared_ptr<ListNode <T>> next) {
+    std::shared_ptr<ListNode <T>> new_node =
+        std::make_shared<ListNode <T>>(version, value, nullptr, nullptr, CmpByListVersion(listOrder_));
     auto cur_last = last;
     auto cur_next = new_node;
-    while (!cur_last->CanSetNext()) {
-      std::shared_ptr<ListNode> cur_new_node = std::make_shared<ListNode>(version, cur_last->Find(version), 
-          cur_last->GetLast(version), cur_next, CmpByListVersion(listOrder_));
+    while (!cur_last->canSetNext()) {
+      std::shared_ptr<ListNode <T>> cur_new_node = std::make_shared<ListNode <T>>(version, cur_last->find(version), 
+          cur_last->getLast(version), cur_next, CmpByListVersion(listOrder_));
       // todo copy
-      cur_new_node->CopyNextAfter(cur_last, version);
-      cur_last->GetLast(version)->SetNext(version, cur_new_node);
-      cur_next->SetLast(version, cur_new_node);
+      cur_new_node->copyNextAfter(cur_last, version);
+      cur_last->getLast(version)->setNext(version, cur_new_node);
+      cur_next->setLast(version, cur_new_node);
       cur_next = cur_new_node;
-      cur_last = cur_last->GetLast(version);
+      cur_last = cur_last->getLast(version);
     }
-    cur_last->SetNext(version, cur_next);
-    cur_next->SetLast(version, cur_last);
+    cur_last->setNext(version, cur_next);
+    cur_next->setLast(version, cur_last);
     cur_next = next;
     cur_last = new_node;
-    while (!cur_next->CanSetLast()) {
-      std::shared_ptr<ListNode> cur_new_node =
-          std::make_shared<ListNode>(version, cur_next->Find(version), cur_last,
-              cur_next->GetNext(version), CmpByListVersion(listOrder_));
+    while (!cur_next->canSetLast()) {
+      std::shared_ptr<ListNode <T>> cur_new_node =
+          std::make_shared<ListNode <T>>(version, cur_next->find(version), cur_last,
+              cur_next->getNext(version), CmpByListVersion(listOrder_));
       // todo copy
-      cur_new_node->CopyLastAfter(cur_next, version);
-      cur_next->GetNext(version)->SetLast(version, cur_new_node);
-      cur_last->SetNext(version, cur_new_node);
+      cur_new_node->copyLastAfter(cur_next, version);
+      cur_next->getNext(version)->setLast(version, cur_new_node);
+      cur_last->setNext(version, cur_new_node);
       cur_last = cur_new_node;
-      cur_next = cur_next->GetNext(version);
+      cur_next = cur_next->getNext(version);
     }
-    cur_last->SetNext(version, cur_next);
-    cur_next->SetLast(version, cur_last);
+    cur_last->setNext(version, cur_next);
+    cur_next->setLast(version, cur_last);
   }
 
   // todo check
-  void DropNode(int version, int old_version, const std::shared_ptr<ListNode>& new_node) {
-    auto cur_last = new_node->GetLast(old_version);
-    auto cur_next = new_node->GetNext(old_version);
-    while (!cur_last->CanSetNext()) {
-      std::shared_ptr<ListNode> cur_new_node = std::make_shared<ListNode>(
-          version, cur_last->Find(old_version), cur_last->GetLast(old_version),
+  void dropNode(int version, int old_version, const std::shared_ptr<ListNode <T>>& new_node) {
+    auto cur_last = new_node->getLast(old_version);
+    auto cur_next = new_node->getNext(old_version);
+    while (!cur_last->canSetNext()) {
+      std::shared_ptr<ListNode <T>> cur_new_node = std::make_shared<ListNode <T>>(
+          version, cur_last->find(old_version), cur_last->getLast(old_version),
                                      cur_next, CmpByListVersion(listOrder_));
       //todo copy
-      cur_new_node->CopyNextAfter(cur_last, version);
-      cur_last->GetLast(old_version)->SetNext(version, cur_new_node);
-      cur_next->SetLast(version, cur_new_node);
+      cur_new_node->copyNextAfter(cur_last, version);
+      cur_last->getLast(old_version)->setNext(version, cur_new_node);
+      cur_next->setLast(version, cur_new_node);
       cur_next = cur_new_node;
-      cur_last = cur_last->GetLast(old_version);
+      cur_last = cur_last->getLast(old_version);
     }
-    cur_last->SetNext(version, cur_next);
-    cur_next->SetLast(version, cur_last);
+    cur_last->setNext(version, cur_next);
+    cur_next->setLast(version, cur_last);
 
-    cur_last = new_node->GetLast(old_version);
-    cur_next = new_node->GetNext(old_version);
-    while (!cur_next->CanSetLast()) {
-      std::shared_ptr<ListNode> cur_new_node =
-          std::make_shared<ListNode>(version, cur_next->Find(old_version), cur_last,
-                                     cur_next->GetNext(old_version), CmpByListVersion(listOrder_));
+    cur_last = new_node->getLast(old_version);
+    cur_next = new_node->getNext(old_version);
+    while (!cur_next->canSetLast()) {
+      std::shared_ptr<ListNode <T>> cur_new_node =
+          std::make_shared<ListNode <T>>(version, cur_next->find(old_version), cur_last,
+                                     cur_next->getNext(old_version), CmpByListVersion(listOrder_));
       // todo copy
-      cur_new_node->CopyLastAfter(cur_next, version);
-      cur_next->GetNext(old_version)->SetLast(version, cur_new_node);
-      cur_last->SetNext(version, cur_new_node);
+      cur_new_node->copyLastAfter(cur_next, version);
+      cur_next->getNext(old_version)->setLast(version, cur_new_node);
+      cur_last->setNext(version, cur_new_node);
       cur_last = cur_new_node;
-      cur_next = cur_next->GetNext(old_version);
+      cur_next = cur_next->getNext(old_version);
     }
-    cur_last->SetNext(version, cur_next);
-    cur_next->SetLast(version, cur_last);
+    cur_last->setNext(version, cur_next);
+    cur_next->setLast(version, cur_last);
   }
 
 public:
   PersistentList() : version_(1) { 
     listOrder_ = std::make_shared<ListOrder>();
     listOrder_ -> add(0);
-    head_ = std::make_shared<ListNode>(version_, nullptr, nullptr, CmpByListVersion(listOrder_));
-    tail_ = std::make_shared<ListNode>(version_, head_, nullptr, CmpByListVersion(listOrder_));
-    head_->SetNext(1, tail_);
+    head_ = std::make_shared<ListNode <T>>(version_, nullptr, nullptr, CmpByListVersion(listOrder_));
+    tail_ = std::make_shared<ListNode <T>>(version_, head_, nullptr, CmpByListVersion(listOrder_));
+    head_->setNext(1, tail_);
     size_ = 0;
   }
 
   PersistentList(const std::initializer_list<T>& v) : version_(1) {
     listOrder_ = std::make_shared<ListOrder>();
     listOrder_->add(0);
-    head_ = std::make_shared<ListNode>(version_, nullptr, nullptr, CmpByListVersion(listOrder_));
-    std::shared_ptr<ListNode> ptr = head_;
+    head_ = std::make_shared<ListNode <T>>(version_, nullptr, nullptr, CmpByListVersion(listOrder_));
+    std::shared_ptr<ListNode <T>> ptr = head_;
     for (auto i : v) {
-      auto fatNode = std::make_shared<ListNode>(version_, i, ptr, nullptr, CmpByListVersion(listOrder_));
-      ptr->SetNext(version_, fatNode);
-      fatNode->SetLast(version_, ptr);
+      auto fatNode = std::make_shared<ListNode <T>>(version_, i, ptr, nullptr, CmpByListVersion(listOrder_));
+      ptr->setNext(version_, fatNode);
+      fatNode->setLast(version_, ptr);
       ptr = fatNode;
     }
-    tail_ = std::make_shared<ListNode>(version_, ptr, nullptr, CmpByListVersion(listOrder_));
-    ptr->SetNext(version_, tail_);
+    tail_ = std::make_shared<ListNode <T>>(version_, ptr, nullptr, CmpByListVersion(listOrder_));
+    ptr->setNext(version_, tail_);
     size_ = v.size();
   }
 
-  T Find(int index) const { 
-      std::shared_ptr<ListNode> ptr = FindNodeByIndex(index);
-      return ptr->Find(version_);
+  T find(int index) const { 
+      std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
+      return ptr->find(version_);
   }
 
-  PersistentList Set(int index, const T& value) { 
-    std::shared_ptr<ListNode> ptr = FindNodeByIndex(index);
+  PersistentList set(int index, const T& value) { 
+    std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
     int new_version = listOrder_ -> add(version_);
     // todo избавиться от fatnode
     // если в ноде ещё есть место добавляем
-    if (!ptr->Add(new_version, value)) {
-      MakeNewNode(new_version, value, ptr->GetLast(version_), ptr->GetNext(version_));
+    if (!ptr->add(new_version, value)) {
+      makeNewNode(new_version, value, ptr->getLast(version_), ptr->getNext(version_));
     }
-    if (!ptr->Add(-new_version, ptr->Find(version_))) {
-      MakeNewNode(-new_version, ptr->Find(version_), ptr->GetLast(version_), ptr->GetNext(version_));
+    if (!ptr->add(-new_version, ptr->find(version_))) {
+      makeNewNode(-new_version, ptr->find(version_), ptr->getLast(version_), ptr->getNext(version_));
     }
-    return GetChildren(new_version, size_); 
+    return getChildren(new_version, size_); 
     //todo подвязать себя
-    //ListNode listNode(new_version, value, ptr->GetLast(version_), ptr->GetNext(version_),
+    //ListNode <T> ListNode <T>(new_version, value, ptr->getLast(version_), ptr->getNext(version_),
     //                  CmpByListVersion(listOrder_)); 
     //return GetChildren(new_version);
   }
 
   // нужно реализовывать откат
-  PersistentList Erase(int index) { 
-    std::shared_ptr<ListNode> ptr = FindNodeByIndex(index);
-    auto last = ptr->GetLast(version_);
-    auto next = ptr->GetNext(version_);
+  PersistentList erase(int index) { 
+    std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
+    auto last = ptr->getLast(version_);
+    auto next = ptr->getNext(version_);
     int new_version = listOrder_->add(version_);
-    //last->SetNext(new_version, next);
+    //last->setNext(new_version, next);
     //next->SetLast(new_version, last);
-    DropNode(new_version, version_, ptr);
-    //last->SetNext(-new_version, ptr);
+    dropNode(new_version, version_, ptr);
+    //last->setNext(-new_version, ptr);
     //next->SetLast(-new_version, ptr);
-    auto ptr1 = FindNodeByIndex(version_, index);
-    MakeNewNode(-new_version, ptr1->Find(version_), last, next);
-    return GetChildren(new_version, size_ - 1); 
+    auto ptr1 = findNodeByIndex(version_, index);
+    makeNewNode(-new_version, ptr1->find(version_), last, next);
+    return getChildren(new_version, size_ - 1); 
   }
 
   // будем добавлять до индекса
-  PersistentList Insert(int index, const T& value) { 
+  PersistentList insert(int index, const T& value) { 
      int new_version = listOrder_->add(version_);
-     std::shared_ptr<ListNode> ptr = FindNodeByIndex(index);
-     auto last = ptr->GetLast(version_);
-     auto next = ptr->GetNext(version_);
-     MakeNewNode(new_version, value, last, ptr);
-     auto ptr1 = FindNodeByIndex(new_version, index);
-     DropNode(-new_version, new_version, ptr1);
-     //std::shared_ptr<ListNode> new_node = std::make_shared<ListNode>(new_version, value, last, ptr, CmpByListVersion(listOrder_));
-     //last->SetNext(new_version, new_node);
-     //next->SetLast(new_version, new_node);
-     // 
-     //todo как переводвязать без создания новой ноды?
-    // last->SetNext(-new_version, ptr);
-    // next->SetLast(-new_version, ptr);
-     return GetChildren(new_version, size_ + 1); 
+     std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
+     auto last = ptr->getLast(version_);
+     auto next = ptr->getNext(version_);
+     makeNewNode(new_version, value, last, ptr);
+     auto ptr1 = findNodeByIndex(new_version, index);
+     dropNode(-new_version, new_version, ptr1);
+     return getChildren(new_version, size_ + 1); 
   }
-  // template <class T> class PersistentListIterator final {};
+
+  PersistentList<T> undo() const { 
+    CONTRACT_EXPECT(undoRedoManager_.hasUndo());
+    return undoRedoManager_.undo();
+  }
+
+  PersistentList<T> redo() const {
+    CONTRACT_EXPECT(undoRedoManager_.hasRedo());
+    return undoRedoManager_.redo();
+  }
+
+  ListIterator<T> begin() const { return ListIterator<T>(version_, head_->getNext(version_)); }
+
+  ListIterator<T> end() const { return ListIterator<T>(version_, tail_); }
+
+  ListReverseIterator<T> rbegin() const {
+    return ListReverseIterator<T>(version_, tail_->getLast(version_));
+  }
+
+  ListReverseIterator<T> rend() const { return ListReverseIterator<T>(version_, head_); }
 };
 }// namespace Persistence
 #endif
