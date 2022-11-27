@@ -3,13 +3,13 @@
 
 #include <Common/ContractExceptions.h>
 
-namespace Detail {
+namespace Exceptions::Detail {
 template <class T> [[nodiscard]] decltype(auto) safeDerefHelper(T &&value) {
   CONTRACT_EXPECT(value);
   return *value;
 }
-} // namespace Detail
+} // namespace Exceptions::Detail
 
-#define SAFE_DEREF(object) Detail::safeDerefHelper(object)
+#define SAFE_DEREF(object) Exceptions::Detail::safeDerefHelper(object)
 
 #endif
