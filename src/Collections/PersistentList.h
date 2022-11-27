@@ -56,7 +56,7 @@ struct ListOrder {
     double true_reverse = parent_value + 2 * (next_parent_value - parent_value) / 3;
     weight_true.push_back(true_weight);
     weight_reverse.push_back(true_reverse);
-    //если равны, сделать пересчЄт весов по list
+    // если равны, сделать пересчЄт весов по list
     if (true_weight == true_reverse) {
       double step = weight_border / weight_true.size();
       double cur = -weight_border;
@@ -91,7 +91,7 @@ struct ListOrder {
   }
 };
 
-//компаратор, чтобы сравнивать версии дл€ полной персистентности
+// компаратор, чтобы сравнивать версии дл€ полной персистентности
 struct CmpByListVersion {
   std::shared_ptr<ListOrder> listOrder_;
   CmpByListVersion(std::shared_ptr<ListOrder> listOrder) : listOrder_(listOrder) {}
@@ -221,13 +221,15 @@ template <class T> class ListIterator final {
   }
 
   ListIterator operator++(int) {
+    ListIterator tmp = *this;
     node_ = node_->getNext(version_);
-    return *this;
+    return tmp;
   }
 
   ListIterator &operator--(int) {
+    ListIterator tmp = *this;
     node_ = node_->getLast(version_);
-    return *this;
+    return tmp;
   }
 
   bool operator==(const ListIterator &other) const {
@@ -338,7 +340,6 @@ private:
     while (!cur_last->canSetNext()) {
       std::shared_ptr<ListNode <T>> cur_new_node = std::make_shared<ListNode <T>>(version, cur_last->find(version), 
           cur_last->getLast(version), cur_next, CmpByListVersion(listOrder_));
-      // todo copy
       cur_new_node->copyNextAfter(cur_last, version);
       cur_last->getLast(version)->setNext(version, cur_new_node);
       cur_next->setLast(version, cur_new_node);
@@ -353,7 +354,6 @@ private:
       std::shared_ptr<ListNode <T>> cur_new_node =
           std::make_shared<ListNode <T>>(version, cur_next->find(version), cur_last,
               cur_next->getNext(version), CmpByListVersion(listOrder_));
-      // todo copy
       cur_new_node->copyLastAfter(cur_next, version);
       cur_next->getNext(version)->setLast(version, cur_new_node);
       cur_last->setNext(version, cur_new_node);
@@ -364,7 +364,6 @@ private:
     cur_next->setLast(version, cur_last);
   }
 
-  // todo check
   void dropNode(int version, int old_version, const std::shared_ptr<ListNode <T>>& new_node) {
     auto cur_last = new_node->getLast(old_version);
     auto cur_next = new_node->getNext(old_version);
@@ -372,7 +371,6 @@ private:
       std::shared_ptr<ListNode <T>> cur_new_node = std::make_shared<ListNode <T>>(
           version, cur_last->find(old_version), cur_last->getLast(old_version),
                                      cur_next, CmpByListVersion(listOrder_));
-      //todo copy
       cur_new_node->copyNextAfter(cur_last, version);
       cur_last->getLast(old_version)->setNext(version, cur_new_node);
       cur_next->setLast(version, cur_new_node);
@@ -388,7 +386,6 @@ private:
       std::shared_ptr<ListNode <T>> cur_new_node =
           std::make_shared<ListNode <T>>(version, cur_next->find(old_version), cur_last,
                                      cur_next->getNext(old_version), CmpByListVersion(listOrder_));
-      // todo copy
       cur_new_node->copyLastAfter(cur_next, version);
       cur_next->getNext(old_version)->setLast(version, cur_new_node);
       cur_last->setNext(version, cur_new_node);
@@ -433,8 +430,6 @@ public:
   PersistentList set(int index, const T& value) { 
     std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
     int new_version = listOrder_ -> add(version_);
-    // todo избавитьс€ от fatnode
-    // если в ноде ещЄ есть место добавл€ем
     if (!ptr->add(new_version, value)) {
       makeNewNode(new_version, value, ptr->getLast(version_), ptr->getNext(version_));
     }
@@ -442,10 +437,6 @@ public:
       makeNewNode(-new_version, ptr->find(version_), ptr->getLast(version_), ptr->getNext(version_));
     }
     return getChildren(new_version, size_); 
-    //todo подв€зать себ€
-    //ListNode <T> ListNode <T>(new_version, value, ptr->getLast(version_), ptr->getNext(version_),
-    //                  CmpByListVersion(listOrder_)); 
-    //return GetChildren(new_version);
   }
 
   // нужно реализовывать откат
@@ -469,12 +460,29 @@ public:
      int new_version = listOrder_->add(version_);
      std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
      auto last = ptr->getLast(version_);
-     auto next = ptr->getNext(version_);
      makeNewNode(new_version, value, last, ptr);
      auto ptr1 = findNodeByIndex(new_version, index);
      dropNode(-new_version, new_version, ptr1);
      return getChildren(new_version, size_ + 1); 
   }
+
+  PersistentList push_front(const T &value) {
+      return insert(0, value);
+  }
+
+  PersistentList push_back(const T &value) {
+    int new_version = listOrder_->add(version_);
+    auto last = tail_->getLast(version_);
+    auto next = tail_;
+    makeNewNode(new_version, value, last, next);
+    auto ptr1 = tail_->getLast(new_version);
+    dropNode(-new_version, new_version, ptr1);
+    return getChildren(new_version, size_ + 1);
+  }
+
+  PersistentList pop_front() { return erase(0); }
+
+  PersistentList pop_back() { return erase(size_ - 1); }
 
   PersistentList<T> undo() const { 
     CONTRACT_EXPECT(undoRedoManager_.hasUndo());
@@ -495,6 +503,9 @@ public:
   }
 
   ListReverseIterator<T> rend() const { return ListReverseIterator<T>(version_, head_); }
+
+  size_t size() const { return size_;}
+
 };
 }// namespace Persistence
 #endif
