@@ -2,8 +2,7 @@
 
 #include <sstream>
 
-namespace Exceptions {
-namespace Detail {
+namespace Exceptions::Detail {
 
 [[nodiscard]] std::string createDiagnosticMessage(const char *expression, const char *file,
                                                   const int line) {
@@ -11,6 +10,4 @@ namespace Detail {
   ss << file << ':' << line << ": condition failed: " << expression;
   return ss.str();
 }
-
-} // namespace Detail
-} // namespace Exceptions
+} // namespace Exceptions::Detail
