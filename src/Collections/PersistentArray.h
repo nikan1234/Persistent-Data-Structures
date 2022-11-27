@@ -339,13 +339,13 @@ public:
   PersistentArrayIterator operator++(int) {
     PersistentArrayIterator tmp = *this;
     ++*this;
-    return *this;
+    return tmp;
   }
 
   PersistentArrayIterator &operator--(int) {
     PersistentArrayIterator tmp = *this;
     --*this;
-    return *this;
+    return tmp;
   }
 
   PersistentArrayIterator &operator+=(const Difference difference) {
