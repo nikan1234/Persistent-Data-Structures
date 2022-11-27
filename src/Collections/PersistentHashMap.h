@@ -39,13 +39,13 @@ public:
 
   PersistentHashMap() = default;
 
-  /// Constructs array from other
+  /// Constructs map from other
   PersistentHashMap(PersistentHashMap &&other) noexcept
       : PersistentHashMap(other.size_, std::move(other.hamtRoot_), std::move(other.undoManager())) {
     other.size_ = 0u;
   }
 
-  /// Moves array from other to this
+  /// Moves map from other to this
   PersistentHashMap &operator=(PersistentHashMap &&other) noexcept {
     if (this == &other)
       return *this;
