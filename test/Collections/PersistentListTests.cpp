@@ -146,7 +146,7 @@ TEST(PersistentListTests, InsertList) {
 TEST(PersistentListTests, UndoList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
-  auto v1_undo = v2.undo();
+  auto v2_undo = v2.undo();
   auto v3 = v1.insert(1, 6);
   auto v4 = v2.insert(1, 7);
   auto v4_undo = v4.undo();
@@ -157,7 +157,7 @@ TEST(PersistentListTests, UndoList) {
   //         v2 {1, 5, 2, 3, 4}     v3 {1, 6, 2, 3, 4}
   //                     /               
   //    v4 {1, 7, 5, 2, 3, 4}      
-  ASSERT_EQ(v1_undo.find(1), 2);
+  ASSERT_EQ(v2_undo.find(1), 2);
   ASSERT_EQ(v4_undo_undo.find(1), 2);
   ASSERT_EQ(v4_undo_undo_redo.find(1), 5);
 }
@@ -203,4 +203,57 @@ TEST(PersistentListTests, ReverseIteratorSumList) {
     sum += *i;
   }
   ASSERT_EQ(sum, 10);
+}
+
+TEST(PersistentListTests, PostfixPrefixIteratorList) {
+  PersistentList<int> v1({1, 2, 3, 4});
+  auto v2 = v1.set(0, -1);
+  //                v1 {1, 2, 3, 4}
+  //                   /
+  //         v2 {-1, 2, 3, 4}
+  auto pre = v2.begin()++;
+  auto post = ++v2.begin();
+  ASSERT_EQ(*pre, -1);
+  ASSERT_EQ(*post, 2);
+}
+
+TEST(PersistentListTests, SizeList) {
+  PersistentList<int> v1({1, 2, 3, 4});
+  auto v2 = v1.insert(1, 5);
+  auto v2_undo = v2.undo();
+  auto v3 = v1.insert(1, 6);
+  auto v4 = v2.insert(1, 7);
+  auto v4_undo = v4.undo();
+  auto v4_undo_undo = v4_undo.undo();
+  auto v4_undo_undo_redo = v4_undo_undo.redo();
+  //                       v1 {1, 2, 3, 4}
+  //                       /           \
+  //         v2 {1, 5, 2, 3, 4}     v3 {1, 6, 2, 3, 4}
+  //                     /
+  //    v4 {1, 7, 5, 2, 3, 4}
+  ASSERT_EQ(v2_undo.size(), 4);
+  ASSERT_EQ(v4_undo_undo.size(), 4);
+  ASSERT_EQ(v4_undo_undo_redo.size(), 5);
+}
+
+TEST(PersistentListTests, PustFrontPushBackList) {
+  PersistentList<int> v1({1, 2, 3, 4});
+  auto v2 = v1.push_front(5);
+  auto v3 = v1.push_back(6);
+  //                       v1 {1, 2, 3, 4}
+  //                       /            \
+  //         v2 {5, 1, 2, 3, 4}      v3 {1, 2, 3, 4, 6}
+  ASSERT_EQ(v2.find(0), 5);
+  ASSERT_EQ(v3.find(4), 6);
+}
+
+TEST(PersistentListTests, PopFrontPopBackList) {
+  PersistentList<int> v1({1, 2, 3, 4});
+  auto v2 = v1.pop_front();
+  auto v3 = v1.pop_back();
+  //                       v1 {1, 2, 3, 4}
+  //                       /            \
+  //         v2 {2, 3, 4}      v3 {1, 2, 3}
+  ASSERT_EQ(v2.find(0), 2);
+  ASSERT_ANY_THROW(v3.find(3), 4);
 }
