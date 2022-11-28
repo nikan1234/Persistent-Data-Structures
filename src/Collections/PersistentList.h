@@ -73,6 +73,7 @@ struct ListOrder {
   }
 
   // определяет, предшествует ли версия l версии r в списке версий
+  // l, r - версии, которые нужно сравнить
   bool less(int l, int r) { 
       assert(abs(l) < weight_true.size(), "ListOrder, l < weidht_true.size()");
       assert(abs(r) < weight_true.size(), "ListOrder, r < weidht_reverse.size()");
@@ -100,6 +101,7 @@ struct CmpByListVersion {
       return listOrder_ -> less(a, b); }
 };
 
+// нода списка, которая содержит значения узла до MAX_SIZE_FAT_NODE версий
 template <class T> struct ListNode {
   static const int MAX_SIZE_FAT_NODE = 10;
 
@@ -107,6 +109,11 @@ template <class T> struct ListNode {
   std::map<int, std::shared_ptr<ListNode>, CmpByListVersion> last_;
   std::map<int, T, CmpByListVersion> value_;
 
+  // version - версия, с которой эта нода существует
+  // value   - значение этой ноды для version
+  // last    - предыдущая нода для version
+  // next    - следующая нода для version
+  // cmp     - компаратор, сравнивающий версии
   ListNode(int version, const T& value, std::shared_ptr<ListNode> last, std::shared_ptr<ListNode> next,
            CmpByListVersion cmp)
       : next_(std::map<int, std::shared_ptr<ListNode>, CmpByListVersion>(cmp)),
@@ -119,6 +126,10 @@ template <class T> struct ListNode {
   }
 
   // конструктор для head_ и tail_ - специальных узлов, связывающих версии
+  // version - версия, с которой эта нода существует
+  // last    - предыдущая нода для version
+  // next    - следующая нода для version
+  // cmp     - компаратор, сравнивающий версии
   ListNode(int version, std::shared_ptr<ListNode> last,
            std::shared_ptr<ListNode> next, CmpByListVersion cmp)
       : next_(std::map<int, std::shared_ptr<ListNode>, CmpByListVersion>(cmp)),
@@ -128,6 +139,7 @@ template <class T> struct ListNode {
     last_[version] = last;
   }
 
+  // сравнение нод
   bool operator==(const ListNode &other) const {
     return next_ == other.next_ && last_ == other.last_ && value_ == other.value_;
   }
@@ -136,6 +148,10 @@ template <class T> struct ListNode {
     return next_ != other.next_ || last_ != other.last_ || value_ != other.value_;
   }
 
+  // добавляет значение в ноду, если в ней есть место
+  // version - версия, для которой добавим значение
+  // value   - значение, которое нужно добавить
+  // возвращает true, если удалось добавить, false, если не удалось
   bool add(int version, const T& value) {
     if (value_.size() >= MAX_SIZE_FAT_NODE) {
       return false;
@@ -144,11 +160,16 @@ template <class T> struct ListNode {
     return true;
   }
 
-  // будем в head и tail добавлять в любом случае value_.size() == 0 
+  // возвращает true, если добавить можно следующую ноду, false иначе
   bool canSetNext() { return value_.size() == 0 || next_.size() < MAX_SIZE_FAT_NODE; }
 
+  // возвращает true, если добавить можно предыдующую ноду, false иначе
   bool canSetLast() { return value_.size() == 0 || last_.size() < MAX_SIZE_FAT_NODE; }
 
+  // добавить следующую ноду
+  // version - версия, для которой добавляем следующую ноду
+  // next    - нода, которую нужно добавить
+  // возвращает true, если удалось добавить, false иначе
   bool setNext(int version, std::shared_ptr<ListNode> next) { 
       if (!canSetNext() && next_.find(version) == next_.end()) {
         return false;
@@ -157,6 +178,10 @@ template <class T> struct ListNode {
       return true;
   }
 
+  // добавить предыдущую ноду
+  // version - версия, для которой добавляем предыдущую ноду
+  // last    - нода, которую нужно добавить
+  // возвращает true, если удалось добавить, false иначе
   bool setLast(int version, std::shared_ptr<ListNode> last) { 
       if (!canSetLast() && last_.find(version) == last_.end()) {
         return false;
@@ -165,18 +190,27 @@ template <class T> struct ListNode {
       return true;
   }
 
+  // скопировать из ноды src, все следующие ноды после version
+  // src     - нода, из которой копируем
+  // version - версия, с которой копирует
   void copyNextAfter(std::shared_ptr<ListNode> src, int version) { 
       for (auto i = src->next_.lower_bound(version); i != src->next_.end(); ++i) {
         this->next_[i->first] = src->next_[i->first];
       }
   }
 
+  // скопировать из ноды src, все предыдущие ноды после version
+  // src     - нода, из которой копируем
+  // version - версия, с которой копирует
    void copyLastAfter(std::shared_ptr<ListNode> src, int version) {
      for (auto i = src->last_.lower_bound(version); i != src->last_.end(); ++i) {
       this->last_[i->first] = src->last_[i->first];
      }
   }
 
+  // возвращает значение для версии version
+  // version - версия
+  // возвращает значение
   T find(int version) const {
     assert(!value_.empty(), "value_ in ListNode is empty. It is strange");
     auto it = value_.upper_bound(version);
@@ -184,6 +218,9 @@ template <class T> struct ListNode {
     return it -> second;
   }
 
+  // возвращает следующую ноду для версии version
+  // version - версия
+  // возвращает следующую ноду
   std::shared_ptr<ListNode> getNext(int version) const {
     assert(!next_.empty(), "next_ in ListNode is empty. It is strange");
     auto it = next_.upper_bound(version);
@@ -191,6 +228,9 @@ template <class T> struct ListNode {
     return it->second;
   }
 
+  // возвращает предыдущую ноду для версии version
+  // version - версия
+  // возвращает предыдущую ноду
   std::shared_ptr<ListNode> getLast(int version) const {
     assert(!last_.empty(), "last_ in ListNode is empty. It is strange");
     auto it = last_.upper_bound(version);
@@ -199,11 +239,14 @@ template <class T> struct ListNode {
   }
 };
 
+// итератор для списка
 template <class T> class ListIterator final { 
   int version_;
   std::shared_ptr<ListNode<T>> node_;
 
   public:
+  // version - версия, для которой список
+  // node    - нода, на которую указывает итератор
   ListIterator(int version, const std::shared_ptr<ListNode<T>> &node)
       : version_(version), node_(node) {}
 
@@ -241,11 +284,14 @@ template <class T> class ListIterator final {
   }
 };
 
+// reverse iterator для списка
 template <class T> class ListReverseIterator final {
   int version_;
   std::shared_ptr<ListNode<T>> node_;
 
 public:
+  // version - версия, для которой список
+  // node    - нода, на которую указывает итератор
   ListReverseIterator(int version, const std::shared_ptr<ListNode<T>> &node)
       : version_(version), node_(node) {}
 
@@ -281,6 +327,7 @@ public:
   }
 };
 
+// конкретная версия персистентного списка
 template <class T> class PersistentList final : public Undo::IUndoable<PersistentList<T>> {
 private:
   int version_;
@@ -291,16 +338,25 @@ private:
   size_t size_;
   Undo::UndoRedoManager<PersistentList> undoRedoManager_;
 
-  PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode <T>> head, std::shared_ptr<ListNode<T>> tail, size_t size_,
+  // version  - версия
+  // listOrder - структура для сравнивания версий
+  // head      - нода, которая удерживает первые ноды во всех версиях
+  // tail      - нода, которая удерживает последние ноды во всех версиях
+  // size      - длина этой версии списка
+  PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode <T>> head, std::shared_ptr<ListNode<T>> tail, size_t size,
                  Undo::UndoRedoManager<PersistentList> undoRedoManager)
-      : version_(version), listOrder_(listOrder), head_(head), tail_(tail), size_(size_),
+      : version_(version), listOrder_(listOrder), head_(head), tail_(tail), size_(size),
         undoRedoManager_(undoRedoManager) {
   }
-
+  
+  // возвращает список некоторой версии
+  // new_version - версия
+  // size        - длина списка в этой версии
   PersistentList<T> getChildren(int new_version, size_t size) const {
     const auto undo = [version = version_, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size_](auto manager) {
       return PersistentList{version, listOrder, head, tail, size_undo, manager};
     };
+
     const auto redo = [version = new_version, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size](auto manager) {
       return PersistentList{version, listOrder, head, tail, size_undo, manager};
     };
@@ -308,6 +364,9 @@ private:
     return PersistentList<T>(new_version, listOrder_, head_, tail_, size, newUndoRedoManager);
   }
 
+  // вернуть ноду с номером index в списке версии version
+  // version - версия
+  // index   - индекс
   std::shared_ptr<ListNode <T>> findNodeByIndex(int version, int index) const {
     if (index >= size_) {
       throw std::exception("index more size");
@@ -326,11 +385,17 @@ private:
     return ptr;
   }
 
+  // вернуть ноду с номером index в текущем списке
+  // index   - индекс
   std::shared_ptr<ListNode <T>> findNodeByIndex(int index) const {
     return findNodeByIndex(version_, index);
   }
 
   // делает новую Node, когда старая становится слишком толстой
+  // version - версия, с которой добавляется новая нода
+  // value   - значение, которое будет у этой ноды на версии version
+  // last    - нода, до которой вставляем
+  // next    - нода, после которой вставляем
   void makeNewNode(int version, const T &value, std::shared_ptr<ListNode <T>> last,
                    std::shared_ptr<ListNode <T>> next) {
     std::shared_ptr<ListNode <T>> new_node =
@@ -364,6 +429,9 @@ private:
     cur_next->setLast(version, cur_last);
   }
 
+  // удаляем ноду для некоторой версии с сохранением ограничения на "толщину" нода
+  // version  - версия, с которой удаляется нода
+  // new_node - нода, которую удаляем
   void dropNode(int version, int old_version, const std::shared_ptr<ListNode <T>>& new_node) {
     auto cur_last = new_node->getLast(old_version);
     auto cur_next = new_node->getNext(old_version);
@@ -406,6 +474,7 @@ public:
     size_ = 0;
   }
 
+  // создаём список на основе списка
   PersistentList(const std::initializer_list<T>& v) : version_(1) {
     listOrder_ = std::make_shared<ListOrder>();
     listOrder_->add(0);
@@ -422,11 +491,16 @@ public:
     size_ = v.size();
   }
 
+  // найти значение по индексу
+  // index - индекс
   T find(int index) const { 
       std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
       return ptr->find(version_);
   }
 
+  // установить значение по индексу
+  // index - индекс
+  // value - значение
   PersistentList set(int index, const T& value) { 
     std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
     int new_version = listOrder_ -> add(version_);
@@ -439,23 +513,22 @@ public:
     return getChildren(new_version, size_); 
   }
 
-  // нужно реализовывать откат
+  // удалить элемент из списка
+  // index - индекс
   PersistentList erase(int index) { 
     std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
     auto last = ptr->getLast(version_);
     auto next = ptr->getNext(version_);
     int new_version = listOrder_->add(version_);
-    //last->setNext(new_version, next);
-    //next->SetLast(new_version, last);
     dropNode(new_version, version_, ptr);
-    //last->setNext(-new_version, ptr);
-    //next->SetLast(-new_version, ptr);
     auto ptr1 = findNodeByIndex(version_, index);
     makeNewNode(-new_version, ptr1->find(version_), last, next);
     return getChildren(new_version, size_ - 1); 
   }
 
-  // будем добавлять до индекса
+  // добавить элемент до индекса
+  // index - индекс
+  // value - значение
   PersistentList insert(int index, const T& value) { 
      int new_version = listOrder_->add(version_);
      std::shared_ptr<ListNode <T>> ptr = findNodeByIndex(index);
@@ -466,10 +539,14 @@ public:
      return getChildren(new_version, size_ + 1); 
   }
 
+  // добавить значение в голову
+  // value - значение, которое нужно добавить
   PersistentList push_front(const T &value) {
       return insert(0, value);
   }
 
+  // добавить значение в хвост
+  // value - значение, которое нужно добавить
   PersistentList push_back(const T &value) {
     int new_version = listOrder_->add(version_);
     auto last = tail_->getLast(version_);
@@ -480,15 +557,19 @@ public:
     return getChildren(new_version, size_ + 1);
   }
 
+  // удалить из головы
   PersistentList pop_front() { return erase(0); }
 
+  // удалить из хвоста
   PersistentList pop_back() { return erase(size_ - 1); }
 
+  // откатить на версию назад
   PersistentList<T> undo() const { 
     CONTRACT_EXPECT(undoRedoManager_.hasUndo());
     return undoRedoManager_.undo();
   }
 
+  // перейти на версию вперёд
   PersistentList<T> redo() const {
     CONTRACT_EXPECT(undoRedoManager_.hasRedo());
     return undoRedoManager_.redo();
@@ -504,8 +585,9 @@ public:
 
   ListReverseIterator<T> rend() const { return ListReverseIterator<T>(version_, head_); }
 
+  // длина списка
   size_t size() const { return size_;}
 
 };
-}// namespace Persistence
+}
 #endif
