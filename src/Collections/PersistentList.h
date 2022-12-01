@@ -351,8 +351,6 @@ private:
   std::shared_ptr<ListNode <T>> tail_;
   /// size
   size_t size_;
-  /// to undo/redo
-  Undo::UndoRedoManager<PersistentList> undoRedoManager_;
 
   /// @param version   - version
   /// @param listOrder - structure for version comparison
@@ -361,8 +359,8 @@ private:
   /// @param size      - length of this version of the list
   PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode <T>> head, std::shared_ptr<ListNode<T>> tail, size_t size,
                  Undo::UndoRedoManager<PersistentList> undoRedoManager)
-      : version_(version), listOrder_(listOrder), head_(head), tail_(tail), size_(size),
-        undoRedoManager_(undoRedoManager) {
+      : UndoablePersistentCollection<PersistentList<T>>(undoRedoManager), version_(version), listOrder_(listOrder),
+        head_(head), tail_(tail), size_(size) {
   }
   
   /// @param new_version  - version for new list
@@ -376,7 +374,8 @@ private:
     const auto redo = [version = new_version, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size](auto manager) {
       return PersistentList{version, listOrder, head, tail, size_undo, manager};
     };
-    Undo::UndoRedoManager<PersistentList> newUndoRedoManager = undoRedoManager_.pushUndo(Undo::createAction<PersistentList>(undo, redo));
+    Undo::UndoRedoManager<PersistentList> newUndoRedoManager =
+        undoManager().pushUndo(Undo::createAction<PersistentList>(undo, redo));
     return PersistentList<T>(new_version, listOrder_, head_, tail_, size, newUndoRedoManager);
   }
 
@@ -579,18 +578,6 @@ public:
 
   /// remove from tail
   PersistentList pop_back() { return erase(size_ - 1); }
-
-  /// roll back a version
-  PersistentList<T> undo() const { 
-    CONTRACT_EXPECT(undoRedoManager_.hasUndo());
-    return undoRedoManager_.undo();
-  }
-
-  /// move forward version
-  PersistentList<T> redo() const {
-    CONTRACT_EXPECT(undoRedoManager_.hasRedo());
-    return undoRedoManager_.redo();
-  }
 
   ListIterator<T> begin() const { return ListIterator<T>(version_, head_->getNext(version_)); }
 
