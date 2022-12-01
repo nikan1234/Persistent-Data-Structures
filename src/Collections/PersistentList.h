@@ -8,7 +8,6 @@
 #include <list>
 #include <algorithm>
 #include <memory>
-#include <cassert>
 #include <map>
 #include <cmath>
 
@@ -42,7 +41,7 @@ struct ListOrder {
       weight_reverse.push_back(weight_border);
       return 1;
     }
-    assert(parent <= handles.size(), "version is not exist");
+    CONTRACT_EXPECT(parent <= handles.size());
     auto next_parent_handle = handles[parent];
     ++next_parent_handle;
     double parent_value = weight_true[parent];
@@ -82,8 +81,8 @@ struct ListOrder {
   /// @param r - version to compare
   /// @return true, if l before r, also false
   bool less(int l, int r) { 
-      assert(abs(l) < weight_true.size(), "ListOrder, l < weidht_true.size()");
-      assert(abs(r) < weight_true.size(), "ListOrder, r < weidht_reverse.size()");
+      CONTRACT_EXPECT(abs(l) < weight_true.size());
+      CONTRACT_EXPECT(abs(r) < weight_true.size());
       double weight_l, weight_r;
       if (l < 0) {
         weight_l = weight_reverse[-l];
@@ -226,7 +225,7 @@ template <class T> struct ListNode {
   /// @param version - version
   /// @return a value for version
   T find(int version) const {
-    assert(!value_.empty(), "value_ in ListNode is empty. It is strange");
+    CONTRACT_EXPECT(!value_.empty());
     auto it = value_.upper_bound(version);
     --it;
     return it -> second;
@@ -235,7 +234,7 @@ template <class T> struct ListNode {
   /// @param version - version
   /// @return the following node for the version
   std::shared_ptr<ListNode> getNext(int version) const {
-    assert(!next_.empty(), "next_ in ListNode is empty. It is strange");
+    CONTRACT_EXPECT(!next_.empty());
     auto it = next_.upper_bound(version);
     --it;
     return it->second;
@@ -244,7 +243,7 @@ template <class T> struct ListNode {
   /// @param version - version
   /// @return the previous node for the version version
   std::shared_ptr<ListNode> getLast(int version) const {
-    assert(!last_.empty(), "last_ in ListNode is empty. It is strange");
+    CONTRACT_EXPECT(!last_.empty());
     auto it = last_.upper_bound(version);
     --it;
     return it->second;
