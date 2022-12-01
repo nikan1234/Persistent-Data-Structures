@@ -25,6 +25,9 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
 
   using Base = UndoablePersistentCollection<PersistentArray>;
 
+  using SharedValue = std::shared_ptr<const T>;
+  using SharedValueStorage = std::vector<SharedValue>;
+
   /// Base class for nodes tree implementations
   struct NodeImplBase {
     virtual ~NodeImplBase() = default;
@@ -32,10 +35,10 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
     /// Checks is node contains element by specified index
     [[nodiscard]] virtual bool contains(std::size_t index) const = 0;
     /// Access value by index
-    [[nodiscard]] virtual const T &value(std::size_t index) const = 0;
-    [[nodiscard]] T &value(std::size_t index) {
+    [[nodiscard]] virtual const SharedValue &value(std::size_t index) const = 0;
+    [[nodiscard]] SharedValue &value(std::size_t index) {
       const auto &constThis = *this;
-      return const_cast<T &>(constThis.value(index));
+      return const_cast<SharedValue &>(constThis.value(index));
     }
     /// Swap values containing this and other nodes
     virtual void swapValues(NodeImplBase &other) { other.swapValues(*this); }
@@ -44,8 +47,6 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
   /// Root node implementation. Refers to original array.
   class RootNodeImpl final : public NodeImplBase {
   public:
-    using Storage = std::vector<T>;
-
     template <class... Args>
     explicit RootNodeImpl(Args &&...args) : storage_(std::forward<Args>(args)...) {}
 
@@ -53,14 +54,14 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
       return index < storage_.size();
     }
 
-    [[nodiscard]] const T &value(const std::size_t index) const override {
+    [[nodiscard]] const SharedValue &value(const std::size_t index) const override {
       return storage_.at(index);
     }
 
-    [[nodiscard]] Storage &getStorage() { return storage_; }
+    [[nodiscard]] SharedValueStorage &getStorage() { return storage_; }
 
   private:
-    Storage storage_;
+    SharedValueStorage storage_;
   };
 
   /// Change-set node implementation. Contains modified value.
@@ -68,25 +69,25 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
   public:
     template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
     ChangeSetNodeImpl(const std::size_t index, U &&value)
-        : modificationIndex_(index), modifiedValue_(std::forward<U>(value)) {}
+        : modificationIndex_(index), modifiedValue_(std::make_shared<T>(std::forward<U>(value))) {}
 
     void swapValues(NodeImplBase &other) override {
       CONTRACT_EXPECT(other.contains(modificationIndex_));
-      std::swap(modifiedValue_, other.value(modificationIndex_));
+      modifiedValue_.swap(other.value(modificationIndex_));
     }
 
     [[nodiscard]] bool contains(const std::size_t index) const override {
       return modificationIndex_ == index;
     }
 
-    [[nodiscard]] const T &value(const std::size_t index) const override {
+    [[nodiscard]] const SharedValue &value(const std::size_t index) const override {
       CONTRACT_EXPECT(contains(index));
       return modifiedValue_;
     }
 
   private:
     std::size_t modificationIndex_;
-    T modifiedValue_;
+    SharedValue modifiedValue_;
   };
 
   /// Persistent node with specified implementation.
@@ -102,7 +103,7 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
     [[nodiscard]] bool isRoot() const { return dynamic_cast<RootNodeImpl *>(impl_.get()); }
 
     [[nodiscard]] bool contains(std::size_t index) const { return impl_->contains(index); }
-    [[nodiscard]] const T &value(std::size_t index) const { return impl_->value(index); }
+    [[nodiscard]] const SharedValue &value(std::size_t index) const { return impl_->value(index); }
 
     /// Changes node's parent
     [[maybe_unused]] Ptr reparent(Ptr newParent) {
@@ -116,12 +117,6 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
       CONTRACT_EXPECT(isRoot() && !other->isRoot());
       impl_->swapValues(*other->impl_);
       std::swap(impl_, other->impl_);
-    }
-
-    /// Appends value to array storage. Applicable only if this is root node.
-    template <class... Args> void extend(Args &&...args) {
-      CONTRACT_EXPECT(isRoot());
-      dynamic_cast<RootNodeImpl &>(*impl_).getStorage().emplace_back(std::forward<Args>(args)...);
     }
 
     template <class... Args> [[nodiscard]] static Ptr makeRoot(Args &&...args) {
@@ -142,21 +137,32 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
 
 public:
   using Value = T;
-  using Iterator = PersistentArrayIterator<T>;
-  using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<T>>;
+  using Iterator = PersistentArrayIterator<Value>;
+  using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<Value>>;
 
   /// Creates empty array.
   PersistentArray() = default;
 
   /// Creates array containing specified values.
   /// \param values values to store
-  PersistentArray(const std::initializer_list<T> &values)
-      : PersistentArray(values.size(),
-                        !std::empty(values) ? PersistentNode::makeRoot(values) : nullptr) {}
+  PersistentArray(const std::initializer_list<Value> &values)
+      : PersistentArray(values.size(), nullptr) {
+    SharedValueStorage storage;
+    storage.reserve(size_);
+    std::transform(values.begin(), values.end(), std::back_inserter(storage),
+                   [](const Value &value) { return std::make_shared<Value>(value); });
+    node_ = PersistentNode::makeRoot(std::move(storage));
+  }
 
   /// Creates array containing count copies of element value
-  explicit PersistentArray(const std::size_t count, const T &value = T())
-      : PersistentArray(count, count ? PersistentNode::makeRoot(count, value) : nullptr) {}
+  explicit PersistentArray(const std::size_t count, const Value &value = Value())
+      : PersistentArray(count, nullptr) {
+    SharedValueStorage storage;
+    storage.reserve(size_);
+    std::generate_n(std::back_inserter(storage), count,
+                    [&value] { return std::make_shared<Value>(value); });
+    node_ = PersistentNode::makeRoot(std::move(storage));
+  }
 
   /// Constructs array from other.
   PersistentArray(PersistentArray &&other) noexcept
@@ -186,14 +192,14 @@ public:
 
   /// Access to first element.
   /// Complexity: constant.
-  [[nodiscard]] const T &front() const {
+  [[nodiscard]] const Value &front() const {
     CONTRACT_EXPECT(!empty());
     return value(0);
   }
 
   /// Access to last element.
   /// Complexity: constant.
-  [[nodiscard]] const T &back() const {
+  [[nodiscard]] const Value &back() const {
     CONTRACT_EXPECT(!empty());
     return value(size_ - 1);
   }
@@ -201,12 +207,9 @@ public:
   /// Returns stored value by index.
   /// Complexity: amortized constant.
   /// \param index value index in array
-  [[nodiscard]] const T &value(const std::size_t index) const {
+  [[nodiscard]] const Value &value(const std::size_t index) const {
     CONTRACT_EXPECT(index < size_);
-
-    if (!node_->contains(index))
-      reRootModificationTree();
-    return node_->value(index);
+    return SAFE_DEREF(sharedValue(index));
   }
 
   /// Changes array value for specified index.
@@ -214,44 +217,38 @@ public:
   /// \param index array index
   /// \param value new value
   /// \return array containing new value
-  template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
+  template <class U, class = std::enable_if_t<std::is_convertible_v<U, Value>, void>>
   [[nodiscard]] PersistentArray setValue(const std::size_t index, U &&value) const {
     CONTRACT_EXPECT(index < size_);
-    auto origin = PersistentNode::makeChangeSet(index, std::forward<U>(value), node_);
-
-    const auto undo = [size = size_, node = node_](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    const auto redo = [size = size_, node = std::move(origin)](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+    return modify(PersistentNode::makeChangeSet(index, std::forward<U>(value), node_), size_);
   }
 
   /// Appends value to the end of array
-  /// Complexity: amortized constant.
+  /// Complexity: linear.
   /// \param value value to append
   /// \return array containing appended value
-  template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
-  [[nodiscard]] PersistentArray pushBack(U &&value) const {
-    auto &root = findOrCreateRoot();
-    CONTRACT_ASSERT(node_);
+  [[nodiscard]] PersistentArray pushBack(const Value &value) const { return emplaceBack(value); }
 
-    auto origin = node_;
-    if (root.contains(size_))
-      /// Should create change-set
-      origin = PersistentNode::makeChangeSet(size_, std::forward<U>(value), node_);
-    else
-      /// Should extend original array with value
-      root.extend(std::forward<U>(value));
+  /// Appends value to the end of array
+  /// Complexity: linear.
+  /// \param value value to append
+  /// \return array containing appended value
+  [[nodiscard]] PersistentArray pushBack(Value &&value) const {
+    return emplaceBack(std::move(value));
+  }
 
-    const auto undo = [size = size_, node = node_](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    const auto redo = [size = size_ + 1, node = std::move(origin)](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+  /// Constructs an element in-place at the end of array
+  /// Complexity: linear.
+  /// \param args arguments to create value
+  /// \return array containing appended value
+  template <class... Args> [[nodiscard]] PersistentArray emplaceBack(Args &&...args) const {
+    SharedValueStorage storage;
+    storage.reserve(size_ + 1u);
+    for (std::size_t i = 0; i < size_; ++i)
+      storage.push_back(sharedValue(i));
+    storage.emplace_back(std::make_shared<Value>(std::forward<Args>(args)...));
+
+    return modify(PersistentNode::makeRoot(std::move(storage)), size_ + 1);
   }
 
   /// Removes last element from array
@@ -262,13 +259,7 @@ public:
 
     /// Simply decrement size and don't remove value from original array,
     /// since we don't know is this value referenced from another array or not
-    const auto undo = [size = size_, node = node_](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    const auto redo = [size = size_ - 1, node = node_](auto manager) {
-      return PersistentArray{size, node, std::move(manager)};
-    };
-    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+    return modify(node_, size_ - 1);
   }
 
   /// Returns an iterator to the beginning.
@@ -284,18 +275,28 @@ private:
   std::size_t size_ = 0;
   mutable typename PersistentNode::Ptr node_; // lazy initialization
 
-  explicit PersistentArray(const std::size_t size, typename PersistentNode::Ptr node,
+  explicit PersistentArray(const std::size_t size, typename PersistentNode::Ptr node = {},
                            Undo::UndoRedoManager<PersistentArray> undoRedoManager = {})
       : Base(std::move(undoRedoManager)), size_(size), node_(std::move(node)) {}
 
-  [[nodiscard]] PersistentNode &findOrCreateRoot() const {
-    if (!node_)
-      return SAFE_DEREF(node_ = PersistentNode::makeRoot());
+  /// Returns modified array and generates undo action.
+  [[nodiscard]] PersistentArray modify(typename PersistentNode::Ptr newNode,
+                                       const std::size_t newSize) const {
 
-    auto foundNode = node_;
-    while (foundNode && !foundNode->isRoot())
-      foundNode = foundNode->parent();
-    return SAFE_DEREF(foundNode);
+    const auto undo = [size = size_, node = node_](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
+    };
+    const auto redo = [size = newSize, node = std::move(newNode)](auto manager) {
+      return PersistentArray{size, node, std::move(manager)};
+    };
+    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
+  }
+
+  /// Returns shared value for particular index. Re-root modification tree if it's required.
+  [[nodiscard]] SharedValue sharedValue(const std::size_t index) const {
+    if (!node_->contains(index))
+      reRootModificationTree();
+    return node_->value(index);
   }
 
   /// Function to re-root modification tree. After re-rooting current node becomes root.
