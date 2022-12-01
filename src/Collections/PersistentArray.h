@@ -145,10 +145,10 @@ public:
   using Iterator = PersistentArrayIterator<T>;
   using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<T>>;
 
-  /// Creates empty array
+  /// Creates empty array.
   PersistentArray() = default;
 
-  /// Creates array containing specified values
+  /// Creates array containing specified values.
   /// \param values values to store
   PersistentArray(const std::initializer_list<T> &values)
       : PersistentArray(values.size(),
@@ -158,13 +158,13 @@ public:
   explicit PersistentArray(const std::size_t count, const T &value = T())
       : PersistentArray(count, count ? PersistentNode::makeRoot(count, value) : nullptr) {}
 
-  /// Constructs array from other
+  /// Constructs array from other.
   PersistentArray(PersistentArray &&other) noexcept
       : PersistentArray(other.size_, std::move(other.node_), std::move(other.undoManager())) {
     other.size_ = 0u;
   }
 
-  /// Moves array from other to this
+  /// Moves array from other to this.
   PersistentArray &operator=(PersistentArray &&other) noexcept {
     if (this == &other)
       return *this;
@@ -176,25 +176,30 @@ public:
     return *this;
   }
 
-  /// Returns size of array
-  [[nodiscard]] std::size_t size() const { return size_; }
+  /// Returns size of array.
+  /// Complexity: constant.
+  [[nodiscard]] std::size_t size() const noexcept { return size_; }
 
-  /// Returns true is empty
-  [[nodiscard]] bool empty() const { return size_ == 0u; }
+  /// Returns true is empty.
+  /// Complexity: constant.
+  [[nodiscard]] bool empty() const noexcept { return size_ == 0u; }
 
-  /// Access to first element
+  /// Access to first element.
+  /// Complexity: constant.
   [[nodiscard]] const T &front() const {
     CONTRACT_EXPECT(!empty());
     return value(0);
   }
 
-  /// Access to last element
+  /// Access to last element.
+  /// Complexity: constant.
   [[nodiscard]] const T &back() const {
     CONTRACT_EXPECT(!empty());
     return value(size_ - 1);
   }
 
-  /// Returns stored value by index
+  /// Returns stored value by index.
+  /// Complexity: amortized constant.
   /// \param index value index in array
   [[nodiscard]] const T &value(const std::size_t index) const {
     CONTRACT_EXPECT(index < size_);
@@ -204,7 +209,8 @@ public:
     return node_->value(index);
   }
 
-  /// Changes array value for specified index
+  /// Changes array value for specified index.
+  /// Complexity: constant.
   /// \param index array index
   /// \param value new value
   /// \return array containing new value
@@ -223,6 +229,7 @@ public:
   }
 
   /// Appends value to the end of array
+  /// Complexity: amortized constant.
   /// \param value value to append
   /// \return array containing appended value
   template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>, void>>
@@ -248,6 +255,7 @@ public:
   }
 
   /// Removes last element from array
+  /// Complexity: constant.
   /// \return array without removed element
   [[nodiscard]] PersistentArray popBack() const {
     CONTRACT_EXPECT(!empty());
@@ -263,9 +271,13 @@ public:
     return redo(this->undoManager().pushUndo(Undo::createAction<PersistentArray>(undo, redo)));
   }
 
+  /// Returns an iterator to the beginning.
   [[nodiscard]] Iterator begin() const { return Iterator{*this}; }
+  /// Returns an iterator to the end.
   [[nodiscard]] Iterator end() const { return Iterator{*this, size()}; }
+  /// Returns a reverse iterator to the beginning.
   [[nodiscard]] ReverseIterator rbegin() const { return ReverseIterator{end()}; }
+  /// Returns a reverse iterator to the end.
   [[nodiscard]] ReverseIterator rend() const { return ReverseIterator{begin()}; }
 
 private:
@@ -333,20 +345,16 @@ public:
   PersistentArrayIterator &operator=(const PersistentArrayIterator &) = default;
 
   /// Access to value which iterator points to.
-  [[nodiscard]] Reference operator*() const { return target_->value(currentIndex_); }
-  [[nodiscard]] Pointer operator->() const { return &target_->value(currentIndex_); }
+  [[nodiscard]] Reference operator*() const { return target_.value(currentIndex_); }
+  /// Access to value which iterator points to.
+  [[nodiscard]] Pointer operator->() const { return &target_.value(currentIndex_); }
+  /// Access to element with specified offset.
+  [[nodiscard]] Reference operator[](const Difference offset) const { return *(*this + offset); }
 
-  PersistentArrayIterator &operator++() {
-    CONTRACT_EXPECT(currentIndex_ < target_->size());
-    ++currentIndex_;
-    return *this;
-  }
-
-  PersistentArrayIterator &operator--() {
-    CONTRACT_EXPECT(currentIndex_ > 0);
-    --currentIndex_;
-    return *this;
-  }
+  /// Increments iterator.
+  PersistentArrayIterator &operator++() { return *this += 1u; }
+  /// Decrements iterator.
+  PersistentArrayIterator &operator--() { return *this -= 1u; }
 
   PersistentArrayIterator operator++(int) {
     PersistentArrayIterator tmp = *this;
@@ -370,12 +378,12 @@ public:
 
   [[nodiscard]] PersistentArrayIterator operator+(const Difference difference) {
     PersistentArrayIterator tmp = *this;
-    return *this += difference;
+    return tmp += difference;
   }
 
   [[nodiscard]] PersistentArrayIterator operator-(const Difference difference) {
     PersistentArrayIterator tmp = *this;
-    return *this -= difference;
+    return tmp -= difference;
   }
 
   [[nodiscard]] Difference operator-(const PersistentArrayIterator &other) const {
@@ -409,19 +417,19 @@ public:
 private:
   [[nodiscard]] bool verifyOffset(const Difference difference) const noexcept {
     if (difference > 0)
-      return difference <= target_->size() - currentIndex_;
+      return difference <= target_.size() - currentIndex_;
     return -difference <= currentIndex_;
   }
 
   [[nodiscard]] bool verifyCompatibility(const PersistentArrayIterator &other) const noexcept {
-    return target_ == other.target_;
+    return &target_ == &other.target_;
   }
 
   explicit PersistentArrayIterator(const PersistentArray<T> &target,
-                                   const PositionIndex currentIndex = 0u)
-      : target_(&target), currentIndex_(currentIndex) {}
+                                   const PositionIndex currentIndex = 0u) noexcept
+      : target_(target), currentIndex_(currentIndex) {}
 
-  const PersistentArray<T> *target_;
+  const PersistentArray<T> &target_;
   PositionIndex currentIndex_;
 };
 
