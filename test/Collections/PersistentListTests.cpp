@@ -4,10 +4,10 @@
 
 using namespace Persistence;
 
-// проверяем, что порядок версий определяется корректно
+// check that the version order is determined correctly
 TEST(PersistentListTests, Order) { 
 	ListOrder order; 
-	ASSERT_EQ(order.add(1), 1); //неважно, какой аргумент в первый раз
+	ASSERT_EQ(order.add(1), 1);
     ASSERT_EQ(order.add(1), 2);
     ASSERT_EQ(order.add(1), 3);
     ASSERT_EQ(order.add(2), 4);
@@ -22,7 +22,7 @@ TEST(PersistentListTests, Order) {
     ASSERT_EQ(order.less(4, 3) && order.less(3, 6), order.less(4, 6));
 }
 
-// проверяем, что в одну ноду добавится не больше ListNode::MAX_SIZE_FAT_NODE 
+// check that no more than ListNode::MAX_SIZE_FAT_NODE will be added to one node
 TEST(PersistentListTests, AddNode) { 
     std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>(); 
     listOrder->add(1);
@@ -33,7 +33,7 @@ TEST(PersistentListTests, AddNode) {
     ASSERT_EQ(listNode.add(listOrder->add(ListNode<int>::MAX_SIZE_FAT_NODE), 10), false);
 }
 
-// проверяем, что в одной ноде корректно ищется значение по версии
+// we check that in one node the value is correctly searched for by version
 TEST(PersistentListTests, FindNode) {
   std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
   listOrder->add(1);
@@ -43,8 +43,8 @@ TEST(PersistentListTests, FindNode) {
   listNode.add(listOrder->add(2), 13); // 4
   listNode.add(listOrder->add(1), 14); // 5
   listNode.add(listOrder->add(2), 15); // 6
-  listOrder->add(4); // изменение для 7 версии не в этой ноде
-  listOrder->add(6); // изменение для 8 версии не в этой ноде
+  listOrder->add(4); // change for version 7 is not in this node
+  listOrder->add(6); // change for version 8 is not in this node
   ASSERT_EQ(listNode.find(3), 12);
   ASSERT_EQ(listNode.find(4), 13);
   ASSERT_EQ(listNode.find(7), 13);
@@ -55,7 +55,7 @@ TEST(PersistentListTests, FindNode) {
   ASSERT_EQ(listNode1.find(4), 10);
 }
 
-// тест на поиск элемента в списке
+// test to find an element in a list
 TEST(PersistentListTests, FindList) {
   const PersistentList<int> test({1, 2, 3, 4});
   ASSERT_EQ(test.find(0), 1);
@@ -64,7 +64,7 @@ TEST(PersistentListTests, FindList) {
   ASSERT_EQ(test.find(3), 4);
 }
 
-// тест на установление значения по индексу
+// index test
 TEST(PersistentListTests, SetList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
@@ -82,7 +82,7 @@ TEST(PersistentListTests, SetList) {
   ASSERT_EQ(v4.find(0), -1);
 }
 
-// тест на удаления из списка
+// deletion test
 TEST(PersistentListTests, EraseList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.erase(1);
@@ -107,7 +107,7 @@ TEST(PersistentListTests, EraseList) {
   ASSERT_EQ(v5.find(0), 3);
 }
 
-// тест на вставку в список
+// list insertion test
 TEST(PersistentListTests, InsertList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
@@ -146,7 +146,7 @@ TEST(PersistentListTests, InsertList) {
   ASSERT_EQ(v5.find(6), 4);
 }
 
-// тест на undo-redo
+// undo redo test
 TEST(PersistentListTests, UndoList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
@@ -166,7 +166,7 @@ TEST(PersistentListTests, UndoList) {
   ASSERT_EQ(v4_undo_undo_redo.find(1), 5);
 }
 
-// тест на разыменование итератора
+// iterator dereference test
 TEST(PersistentListTests, IteratorValueTest) {
   std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
   listOrder->add(1);
@@ -174,7 +174,7 @@ TEST(PersistentListTests, IteratorValueTest) {
   ASSERT_EQ(*iterator, 10);
 }
 
-// тест на обход с помощью итератора
+// iterator traversal test
 TEST(PersistentListTests, IteratorSumList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
@@ -193,7 +193,7 @@ TEST(PersistentListTests, IteratorSumList) {
   ASSERT_EQ(sum, 10);
 }
 
-// тест на обратный обход с помощью итератора
+// backtracking test with iterator
 TEST(PersistentListTests, ReverseIteratorSumList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
@@ -212,7 +212,7 @@ TEST(PersistentListTests, ReverseIteratorSumList) {
   ASSERT_EQ(sum, 10);
 }
 
-// тест на постфикс, префикс для итератора списка
+// test for postfix, prefix for list iterator
 TEST(PersistentListTests, PostfixPrefixIteratorList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
@@ -225,7 +225,7 @@ TEST(PersistentListTests, PostfixPrefixIteratorList) {
   ASSERT_EQ(*post, 2);
 }
 
-// тест на длину списка
+// list length test
 TEST(PersistentListTests, SizeList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
@@ -245,7 +245,7 @@ TEST(PersistentListTests, SizeList) {
   ASSERT_EQ(v4_undo_undo_redo.size(), 5);
 }
 
-// тест на добавление в конец и начало списка
+// test for adding to the end and beginning of the list
 TEST(PersistentListTests, PustFrontPushBackList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.push_front(5);
@@ -257,7 +257,7 @@ TEST(PersistentListTests, PustFrontPushBackList) {
   ASSERT_EQ(v3.find(4), 6);
 }
 
-// тест на удаление из конца и начала списка
+// test to remove from the end and the beginning of the list
 TEST(PersistentListTests, PopFrontPopBackList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.pop_front();
