@@ -50,7 +50,7 @@ template <class ContainerValue>
     return source;
 
   std::vector<ContainerValue> destination;
-  destination.reserve(std::size(source));
+  destination.reserve(std::size(source) - 1);
 
   std::copy(source.begin(), where, std::back_inserter(destination));
   std::copy(std::next(where), source.end(), std::back_inserter(destination));

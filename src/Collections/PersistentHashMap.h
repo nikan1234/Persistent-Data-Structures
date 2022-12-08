@@ -34,10 +34,17 @@ class PersistentHashMap final
   class PersistentHashMapIterator;
 
 public:
-  using KeyValue = std::pair<const Key, Value>;
-  using Iterator = PersistentHashMapIterator;
+  using value_type = std::pair<const Key, Value>;
+  using iterator = PersistentHashMapIterator;
 
   PersistentHashMap() = default;
+
+  PersistentHashMap(std::initializer_list<value_type> values) {
+    for (const auto &value : values) {
+      *this = this->insert(value, false);
+      this->undoManager() = {}; // clear undo
+    }
+  }
 
   /// Constructs map from other
   PersistentHashMap(PersistentHashMap &&other) noexcept
@@ -65,18 +72,28 @@ public:
   /// Inserts new node into map
   /// \param keyValue key-value to insert
   /// \param replace if true then replaces previously stored values
-  [[nodiscard]] PersistentHashMap insert(const KeyValue &keyValue,
+  [[nodiscard]] PersistentHashMap insert(const value_type &keyValue,
                                          const bool replace = true) const {
     auto node = Detail::HamtValueNode<HamtTraits>::create(keyValue);
-    Detail::InserterVisitor<HamtTraits> inserter{node, replace};
-    return modifyHamt(inserter, std::move(node), size_ + 1);
+    if (!hamtRoot_)
+      return modifyHamt(std::move(node), 1u);
+
+    Detail::InserterVisitor<HamtTraits> inserter{std::move(node), replace};
+    auto [status, newRoot] = hamtRoot_->accept(inserter);
+    return modifyHamt(std::move(newRoot),
+                      status == Detail::HamtVisitorStatus::Resized ? size_ + 1 : size_);
   }
 
   /// Erases key from map. Does nothing if key absent.
   /// \param key key to erase
   [[nodiscard]] PersistentHashMap erase(const Key &key) const {
+    if (!hamtRoot_)
+      return modifyHamt(nullptr, 0u);
+
     Detail::EraserVisitor<HamtTraits> eraser{key};
-    return modifyHamt(eraser, nullptr, size_ - 1);
+    auto [status, newRoot] = hamtRoot_->accept(eraser);
+    return modifyHamt(std::move(newRoot),
+                      status == Detail::HamtVisitorStatus::Resized ? size_ - 1 : size_);
   }
 
   /// Finds value for particular key
@@ -94,9 +111,9 @@ public:
   }
 
   /// Returns forward iterator to begin
-  [[nodiscard]] Iterator begin() const { return PersistentHashMapIterator(hamtRoot_); }
+  [[nodiscard]] auto begin() const { return PersistentHashMapIterator(hamtRoot_); }
   /// Returns forward iterator to end
-  [[nodiscard]] Iterator end() const { return PersistentHashMapIterator(); }
+  [[nodiscard]] auto end() const { return PersistentHashMapIterator(); }
 
   /// Checks is key present in map
   /// \param key to check
@@ -113,46 +130,25 @@ private:
                              UndoManager undoRedoManager = {})
       : Base(std::move(undoRedoManager)), size_(size), hamtRoot_(std::move(hamtRoot)) {}
 
-  /// Modifies HAMT with visitor. If HAMT ie empty, initializes it with default value.
-  /// Produces undoable action.
-  [[nodiscard]] PersistentHashMap modifyHamt(Detail::IHamtVisitor<HamtTraits> &visitor,
-                                             const Detail::HamtNodeSPtr<HamtTraits> &defaultValue,
-                                             const std::size_t modificationSize) const {
-
-    if (auto newRoot = hamtRoot_ ? hamtRoot_->accept(visitor) : defaultValue;
-        newRoot != hamtRoot_) {
-
-      const auto undo = [size = size_, root = hamtRoot_](auto manager) {
-        return PersistentHashMap{size, root, std::move(manager)};
-      };
-      const auto redo = [size = modificationSize, root = std::move(newRoot)](auto manager) {
-        return PersistentHashMap{size, root, std::move(manager)};
-      };
-
-      /// HAMT was actually modified
-      return redo(this->undoManager().pushUndo(Undo::createAction<PersistentHashMap>(undo, redo)));
-    }
-    /// HAMT not changed (e.g. erase of non-existing key)
-    return returnUnchangedWithUndo();
-  }
-
-  [[nodiscard]] PersistentHashMap returnUnchangedWithUndo() const {
-    const auto returnCopy = [size = size_, root = hamtRoot_](auto manager) {
+  /// Returns modified map and generates undo action.
+  [[nodiscard]] PersistentHashMap modifyHamt(HamtRoot newRoot, const std::size_t newSize) const {
+    const auto undo = [size = size_, root = hamtRoot_](auto manager) {
       return PersistentHashMap{size, root, std::move(manager)};
     };
-    return PersistentHashMap{size_, hamtRoot_,
-                             this->undoManager().pushUndo(
-                                 Undo::createAction<PersistentHashMap>(returnCopy, returnCopy))};
+    const auto redo = [size = newSize, root = std::move(newRoot)](auto manager) {
+      return PersistentHashMap{size, root, std::move(manager)};
+    };
+    return redo(this->undoManager().pushUndo(Undo::createAction<PersistentHashMap>(undo, redo)));
   }
 
   /// @class PersistentHashMapIterator
   /// Implementation of iterator
   class PersistentHashMapIterator {
   public:
-    using KeyValue = KeyValue;
-    using Reference = const KeyValue &;
-    using Pointer = const KeyValue *;
-    using Difference = std::make_signed_t<std::size_t>;
+    using value_type = PersistentHashMap::value_type;
+    using reference = const value_type &;
+    using pointer = const value_type *;
+    using difference_type = std::make_signed_t<std::size_t>;
 
     /// Creates iterator from tree node and founds first value
     explicit PersistentHashMapIterator(Detail::HamtNodeSPtr<HamtTraits> node = {})
@@ -161,8 +157,8 @@ private:
         traverseNext();
     }
 
-    [[nodiscard]] Reference operator*() const { return getValue()->keyValue(); }
-    [[nodiscard]] Pointer operator->() const { return &**this; }
+    [[nodiscard]] reference operator*() const { return getValue()->keyValue(); }
+    [[nodiscard]] pointer operator->() const { return &**this; }
 
     PersistentHashMapIterator &operator++() {
       do {
@@ -235,11 +231,15 @@ namespace std {
 /// Specialization for std::iterator_traits
 template <class Key, class Value, class Hash, class KeyEq>
 struct iterator_traits<Persistence::PersistentHashMap<Key, Value, Hash, KeyEq>> {
+private:
+  using Iterator = typename Persistence::PersistentHashMap<Key, Value, Hash, KeyEq>::Iterator;
+
+public:
   using iterator_category = forward_iterator_tag;
-  using value_type = typename PersistentHashMap<Key, Value, Hash, KeyEq>::Iterator::Value;
-  using pointer = typename PersistentHashMap<Key, Value, Hash, KeyEq>::Iterator::Pointer;
-  using reference = typename PersistentHashMap<Key, Value, Hash, KeyEq>::Iterator::Reference;
-  using difference_type = typename PersistentHashMap<Key, Value, Hash, KeyEq>::Iterator::Difference;
+  using value_type = typename Iterator::value_type;
+  using pointer = typename Iterator::pointer;
+  using reference = typename Iterator::reference;
+  using difference_type = typename Iterator::difference_type;
 };
 } // namespace std
 

@@ -28,6 +28,11 @@ template <class Traits>
   return Bitmap<Traits>{1ull << bit};
 }
 
+enum class HamtVisitorStatus : std::int8_t { Resized, ModifiedExisting, Unchanged };
+
+template <class Traits>
+using HamtVisitorResult = std::tuple<HamtVisitorStatus, HamtNodeSPtr<Traits>>;
+
 /// @class IHamtVisitor
 /// Interface for HAMT nodes visitor.
 template <class Traits> class IHamtVisitor {
@@ -36,13 +41,13 @@ public:
 
   [[nodiscard]] virtual HamtHash hash() const = 0;
 
-  [[nodiscard]] virtual HamtNodeSPtr<Traits>
+  [[nodiscard]] virtual HamtVisitorResult<Traits>
   visit(const std::shared_ptr<const HamtValueNode<Traits>> &) = 0;
 
-  [[nodiscard]] virtual HamtNodeSPtr<Traits>
+  [[nodiscard]] virtual HamtVisitorResult<Traits>
   visit(const std::shared_ptr<const HamtBitmapNode<Traits>> &) = 0;
 
-  [[nodiscard]] virtual HamtNodeSPtr<Traits>
+  [[nodiscard]] virtual HamtVisitorResult<Traits>
   visit(const std::shared_ptr<const HamtCollisionNode<Traits>> &) = 0;
 };
 
@@ -51,7 +56,7 @@ public:
 template <class Traits> class IHamtNode {
 public:
   virtual ~IHamtNode() = default;
-  [[nodiscard]] virtual HamtNodeSPtr<Traits> accept(IHamtVisitor<Traits> &visitor) const = 0;
+  [[nodiscard]] virtual HamtVisitorResult<Traits> accept(IHamtVisitor<Traits> &visitor) const = 0;
 
   [[nodiscard]] virtual const HamtNodeList<Traits> &children() const noexcept = 0;
   [[nodiscard]] virtual std::size_t childrenCount() const noexcept = 0;
@@ -107,7 +112,7 @@ public:
   [[nodiscard]] const KeyValue &keyValue() const { return keyValue_; }
 
   /// Accepts visitor
-  [[nodiscard]] HamtNodeSPtr<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
+  [[nodiscard]] HamtVisitorResult<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
     return visitor.visit(this->shared_from_this());
   }
 
@@ -144,7 +149,7 @@ public:
   /// Inserts node for specified bit. Leaves original node unchanged.
   [[nodiscard]] Ptr insertBit(const HamtBit bit, HamtNodeSPtr<Traits> node) const {
     CONTRACT_EXPECT(!containsBit(bit));
-    return create(bitmap_ & createBitmap<Traits>(bit),
+    return create(bitmap_ | createBitmap<Traits>(bit),
                   Util::vectorInserted(this->children(), this->children().begin() + bitToIndex(bit),
                                        std::move(node)));
   }
@@ -174,7 +179,7 @@ public:
   [[nodiscard]] bool containsBit(const HamtBit bit) const { return bitmap_.test(bit); }
 
   /// Accepts visitor
-  [[nodiscard]] HamtNodeSPtr<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
+  [[nodiscard]] HamtVisitorResult<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
     return visitor.visit(this->shared_from_this());
   }
 
@@ -226,7 +231,7 @@ public:
   }
 
   /// Accepts visitor
-  [[nodiscard]] HamtNodeSPtr<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
+  [[nodiscard]] HamtVisitorResult<Traits> accept(IHamtVisitor<Traits> &visitor) const override {
     return visitor.visit(this->shared_from_this());
   }
 
@@ -271,42 +276,45 @@ private:
 /// Visitor implementation to insertBit value into HAMT.
 template <class Traits> class InserterVisitor final : public HamtVisitorBase<Traits> {
 public:
+  using ReturnType = HamtVisitorResult<Traits>;
+
   explicit InserterVisitor(typename HamtValueNode<Traits>::Ptr inserted, const bool replace = true)
       : inserted_(std::move(inserted)), replace_(replace) {}
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtValueNode<Traits>::Ptr &node) override {
-    if (typename Traits::KeyEqual keyEq; keyEq(node->key(), inserted_->key()))
+  [[nodiscard]] ReturnType visit(const typename HamtValueNode<Traits>::Ptr &node) override {
+    if (typename Traits::KeyEqual keyEq; keyEq(node->key(), inserted_->key())) {
       /// The same key: update or leave unchanged
-      return replace_ ? inserted_ : node;
-
-    return resolveCollision(node);
+      return replace_ ? ReturnType{HamtVisitorStatus::ModifiedExisting, inserted_}
+                      : ReturnType{HamtVisitorStatus::Unchanged, node};
+    }
+    return ReturnType{HamtVisitorStatus::Resized, resolveCollision(node)};
   }
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtBitmapNode<Traits>::Ptr &node) override {
+  [[nodiscard]] ReturnType visit(const typename HamtBitmapNode<Traits>::Ptr &node) override {
     const auto bit = this->getLevelBit(inserted_->hash());
     if (!node->containsBit(bit))
       /// Add new node
-      return node->insertBit(bit, inserted_);
+      return ReturnType{HamtVisitorStatus::Resized, node->insertBit(bit, inserted_)};
 
     this->nextLevel();
     const auto &child = node->getChildAtBit(bit);
-    if (auto newChild = child->accept(*this); child != newChild)
-      return node->replaceBit(bit, std::move(newChild));
-
-    return node;
+    auto [status, newChild] = child->accept(*this);
+    return child != newChild ? ReturnType{status, node->replaceBit(bit, std::move(newChild))}
+                             : ReturnType{status, node};
   }
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtCollisionNode<Traits>::Ptr &node) override {
+  [[nodiscard]] ReturnType visit(const typename HamtCollisionNode<Traits>::Ptr &node) override {
     auto collision = node;
+    auto modificationType = HamtVisitorStatus::Resized;
 
     const bool found = static_cast<bool>(collision->findCollision(inserted_->key()));
-    if (found && replace_) /// Replace if required
+    if (found && replace_) {
+      /// Replace if required
       collision = collision->removeCollision(inserted_->key());
-
-    return !found || replace_ ? collision->addCollision(inserted_) : collision;
+      modificationType = HamtVisitorStatus::ModifiedExisting;
+    }
+    return !found || replace_ ? ReturnType{modificationType, collision->addCollision(inserted_)}
+                              : ReturnType{HamtVisitorStatus::Unchanged, collision};
   }
 
   [[nodiscard]] HamtHash hash() const override { return inserted_->hash(); }
@@ -323,10 +331,12 @@ private:
     /// Still collided
     if (bitCurrent == bitInserted) {
       const auto indexNode = HamtBitmapNode<Traits>::create(bitCurrent, node);
-      return indexNode->accept(*this);
+      return std::get<1>(indexNode->accept(*this));
     }
     return HamtBitmapNode<Traits>::create(
-        createBitmap<Traits>(bitCurrent) | createBitmap<Traits>(bitInserted), {node, inserted_});
+        createBitmap<Traits>(bitCurrent) | createBitmap<Traits>(bitInserted),
+        bitCurrent < bitInserted ? HamtNodeList<Traits>{node, inserted_}
+                                 : HamtNodeList<Traits>{inserted_, node});
   }
 
   typename HamtValueNode<Traits>::Ptr inserted_;
@@ -335,86 +345,87 @@ private:
 
 /// @class EraserVisitor
 /// Visitor implementation to removeCollision value from HAMT.
-template <class HamtTraits> class EraserVisitor final : public HamtVisitorBase<HamtTraits> {
+template <class Traits> class EraserVisitor final : public HamtVisitorBase<Traits> {
 public:
+  using ReturnType = HamtVisitorResult<Traits>;
+
   template <class... Args>
   explicit EraserVisitor(Args &&...args)
-      : key_(std::forward<Args>(args)...), hash_(typename HamtTraits::Hasher{}(key_)) {}
+      : key_(std::forward<Args>(args)...), hash_(typename Traits::Hasher{}(key_)) {}
 
-  [[nodiscard]] HamtNodeSPtr<HamtTraits>
-  visit(const typename HamtValueNode<HamtTraits>::Ptr &node) override {
-    if (typename HamtTraits::KeyEqual keyEq; keyEq(node->key(), key_))
-      return nullptr; /// Found node and erased it
+  [[nodiscard]] ReturnType visit(const typename HamtValueNode<Traits>::Ptr &node) override {
+    if (typename Traits::KeyEqual keyEq; keyEq(node->key(), key_))
+      return ReturnType{HamtVisitorStatus::Resized, nullptr}; /// Found node and erased it
 
-    return node; /// Other node found
+    return ReturnType{HamtVisitorStatus::Unchanged, node}; /// Other node found
   }
 
-  [[nodiscard]] HamtNodeSPtr<HamtTraits>
-  visit(const typename HamtBitmapNode<HamtTraits>::Ptr &node) override {
+  [[nodiscard]] ReturnType visit(const typename HamtBitmapNode<Traits>::Ptr &node) override {
     const auto bit = this->getLevelBit(hash_);
     if (!node->containsBit(bit))
-      return node; /// Key not found
+      return ReturnType{HamtVisitorStatus::Unchanged, node}; /// Key not found
 
     this->nextLevel();
     const auto &child = node->getChildAtBit(bit);
 
-    if (const auto newChild = child->accept(*this); child != newChild) {
+    if (const auto [status, newChild] = child->accept(*this); child != newChild) {
       if (!newChild) {
         /// Convert bitmap node into key-value node if it size equal to 1
         const auto nodeErased = node->eraseBit(bit);
-        return nodeErased->childrenCount() > 1 ? nodeErased : nodeErased->children().at(0);
+        return nodeErased->childrenCount() > 1 ? ReturnType{status, nodeErased}
+                                               : ReturnType{status, nodeErased->children().at(0)};
       }
       /// Removed in subtrie
-      return node->replaceBit(bit, std::move(newChild));
+      return ReturnType{status, node->replaceBit(bit, std::move(newChild))};
     }
-    return node; /// Key not found in subtrie
+    return ReturnType{HamtVisitorStatus::Unchanged, node}; /// Key not found in subtrie
   }
 
-  [[nodiscard]] HamtNodeSPtr<HamtTraits>
-  visit(const typename HamtCollisionNode<HamtTraits>::Ptr &node) override {
+  [[nodiscard]] ReturnType visit(const typename HamtCollisionNode<Traits>::Ptr &node) override {
     if (node->findCollision(key_)) {
       /// Convert collision node into key-value node if it size equal to 1
+      constexpr auto status = HamtVisitorStatus::Resized;
       const auto removed = node->removeCollision(key_);
       if (removed->childrenCount() > 1)
-        return removed;
-      return removed->children().at(0);
+        return {status, removed};
+      return {status, removed->children().at(0)};
     }
-    return node; /// Key not found
+    return {HamtVisitorStatus::Unchanged, node}; /// Key not found
   }
 
   [[nodiscard]] HamtHash hash() const override { return hash_; }
 
 private:
-  typename HamtTraits::KeyType key_;
+  typename Traits::KeyType key_;
   HamtHash hash_ = 0u;
 };
 
 /// @class SearcherVisitor
 /// Visitor implementation to search value in HAMT.
 template <class Traits> class SearcherVisitor final : public HamtVisitorBase<Traits> {
-
 public:
+  using ReturnType = HamtVisitorResult<Traits>;
+  static constexpr auto Status = HamtVisitorStatus::Unchanged;
+
   template <class... Args>
   explicit SearcherVisitor(Args &&...args)
       : key_(std::forward<Args>(args)...), hash_(typename Traits::Hasher{}(key_)) {}
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtBitmapNode<Traits>::Ptr &node) override {
+  [[nodiscard]] ReturnType visit(const typename HamtBitmapNode<Traits>::Ptr &node) override {
     const auto bit = this->getLevelBit(hash_);
     if (!node->containsBit(bit))
-      return nullptr;
+      return ReturnType{Status, nullptr};
+
     this->nextLevel();
     return node->getChildAtBit(bit)->accept(*this);
   }
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtCollisionNode<Traits>::Ptr &node) override {
-    return node->findCollision(key_);
+  [[nodiscard]] ReturnType visit(const typename HamtCollisionNode<Traits>::Ptr &node) override {
+    return ReturnType{Status, node->findCollision(key_)};
   }
 
-  [[nodiscard]] HamtNodeSPtr<Traits>
-  visit(const typename HamtValueNode<Traits>::Ptr &node) override {
-    return typename Traits::KeyEqual{}(node->key(), key_) ? node : nullptr;
+  [[nodiscard]] ReturnType visit(const typename HamtValueNode<Traits>::Ptr &node) override {
+    return ReturnType{Status, typename Traits::KeyEqual{}(node->key(), key_) ? node : nullptr};
   }
 
   [[nodiscard]] HamtHash hash() const override { return hash_; }
