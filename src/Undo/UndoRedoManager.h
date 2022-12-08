@@ -69,6 +69,13 @@ template <class Collection> class UndoRedoManager final : public IUndoable<Colle
 
   public:
     UndoRedoStack(typename Entry::Ptr top = nullptr) : top_(std::move(top)) {}
+    UndoRedoStack(UndoRedoStack &&) noexcept = default;
+    UndoRedoStack &operator=(UndoRedoStack &&) noexcept = default;
+
+    ~UndoRedoStack() {
+      while (top_)
+        top_ = std::move(top_->next);
+    }
 
     /// Pop action from stack
     [[nodiscard]] UndoRedoStack pop() const {

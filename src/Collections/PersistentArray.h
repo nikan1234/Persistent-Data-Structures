@@ -191,6 +191,11 @@ public:
     return *this;
   }
 
+  ~PersistentArray() override {
+    while (node_)
+      node_ = node_->reparent(nullptr);
+  }
+
   /// Returns size of array.
   /// Complexity: constant.
   [[nodiscard]] std::size_t size() const noexcept { return size_; }
