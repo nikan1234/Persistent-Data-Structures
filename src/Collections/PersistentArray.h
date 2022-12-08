@@ -145,31 +145,31 @@ class PersistentArray final : public UndoablePersistentCollection<PersistentArra
   };
 
 public:
-  using Value = T;
-  using Iterator = PersistentArrayIterator<Value>;
-  using ReverseIterator = std::reverse_iterator<PersistentArrayIterator<Value>>;
+  using value_type = T;
+  using iterator = PersistentArrayIterator<value_type>;
+  using reverse_iterator = std::reverse_iterator<PersistentArrayIterator<value_type>>;
 
   /// Creates empty array.
   PersistentArray() = default;
 
   /// Creates array containing specified values.
   /// \param values values to store
-  PersistentArray(const std::initializer_list<Value> &values)
+  PersistentArray(const std::initializer_list<value_type> &values)
       : PersistentArray(values.size(), nullptr) {
     ValuePtrStorage storage;
     storage.reserve(size_);
     std::transform(values.begin(), values.end(), std::back_inserter(storage),
-                   [](const Value &value) { return std::make_unique<Value>(value); });
+                   [](const value_type &value) { return std::make_unique<value_type>(value); });
     node_ = PersistentNode::makeRoot(std::move(storage));
   }
 
   /// Creates array containing count copies of element value
-  explicit PersistentArray(const std::size_t count, const Value &value = Value())
+  explicit PersistentArray(const std::size_t count, const value_type &value = value_type())
       : PersistentArray(count, nullptr) {
     ValuePtrStorage storage;
     storage.reserve(size_);
     std::generate_n(std::back_inserter(storage), count,
-                    [&value] { return std::make_unique<Value>(value); });
+                    [&value] { return std::make_unique<value_type>(value); });
     node_ = PersistentNode::makeRoot(std::move(storage));
   }
 
@@ -201,14 +201,14 @@ public:
 
   /// Access to first element.
   /// Complexity: constant.
-  [[nodiscard]] const Value &front() const {
+  [[nodiscard]] const value_type &front() const {
     CONTRACT_EXPECT(!empty());
     return value(0);
   }
 
   /// Access to last element.
   /// Complexity: constant.
-  [[nodiscard]] const Value &back() const {
+  [[nodiscard]] const value_type &back() const {
     CONTRACT_EXPECT(!empty());
     return value(size_ - 1);
   }
@@ -216,7 +216,7 @@ public:
   /// Returns stored value by index.
   /// Complexity: amortized constant.
   /// \param index value index in array
-  [[nodiscard]] const Value &value(const std::size_t index) const {
+  [[nodiscard]] const value_type &value(const std::size_t index) const {
     CONTRACT_EXPECT(index < size_);
     if (!node_->contains(index))
       reRootModificationTree();
@@ -247,13 +247,15 @@ public:
   /// Complexity: linear.
   /// \param value value to append
   /// \return array containing appended value
-  [[nodiscard]] PersistentArray pushBack(const Value &value) const { return emplaceBack(value); }
+  [[nodiscard]] PersistentArray pushBack(const value_type &value) const {
+    return emplaceBack(value);
+  }
 
   /// Appends value to the end of array
   /// Complexity: linear.
   /// \param value value to append
   /// \return array containing appended value
-  [[nodiscard]] PersistentArray pushBack(Value &&value) const {
+  [[nodiscard]] PersistentArray pushBack(value_type &&value) const {
     return emplaceBack(std::move(value));
   }
 
@@ -288,13 +290,13 @@ public:
   }
 
   /// Returns an iterator to the beginning.
-  [[nodiscard]] Iterator begin() const { return Iterator{*this}; }
+  [[nodiscard]] auto begin() const { return iterator{*this}; }
   /// Returns an iterator to the end.
-  [[nodiscard]] Iterator end() const { return Iterator{*this, size()}; }
+  [[nodiscard]] auto end() const { return iterator{*this, size()}; }
   /// Returns a reverse iterator to the beginning.
-  [[nodiscard]] ReverseIterator rbegin() const { return ReverseIterator{end()}; }
+  [[nodiscard]] auto rbegin() const { return reverse_iterator{end()}; }
   /// Returns a reverse iterator to the end.
-  [[nodiscard]] ReverseIterator rend() const { return ReverseIterator{begin()}; }
+  [[nodiscard]] auto rend() const { return reverse_iterator{begin()}; }
 
 private:
   std::size_t size_ = 0;
@@ -365,20 +367,22 @@ template <class T> class PersistentArrayIterator final {
   using PositionIndex = std::size_t;
 
 public:
-  using Value = typename PersistentArray<T>::Value;
-  using Reference = const Value &;
-  using Pointer = const Value *;
-  using Difference = std::make_signed_t<PositionIndex>;
+  using value_type = typename PersistentArray<T>::value_type;
+  using reference = const value_type &;
+  using pointer = const value_type *;
+  using difference_type = std::make_signed_t<PositionIndex>;
 
   PersistentArrayIterator(const PersistentArrayIterator &) = default;
   PersistentArrayIterator &operator=(const PersistentArrayIterator &) = default;
 
   /// Access to value which iterator points to.
-  [[nodiscard]] Reference operator*() const { return target_.value(currentIndex_); }
+  [[nodiscard]] reference operator*() const { return target_.value(currentIndex_); }
   /// Access to value which iterator points to.
-  [[nodiscard]] Pointer operator->() const { return &target_.value(currentIndex_); }
+  [[nodiscard]] pointer operator->() const { return &target_.value(currentIndex_); }
   /// Access to element with specified offset.
-  [[nodiscard]] Reference operator[](const Difference offset) const { return *(*this + offset); }
+  [[nodiscard]] reference operator[](const difference_type offset) const {
+    return *(*this + offset);
+  }
 
   /// Increments iterator.
   PersistentArrayIterator &operator++() { return *this += 1u; }
@@ -397,25 +401,27 @@ public:
     return tmp;
   }
 
-  PersistentArrayIterator &operator+=(const Difference difference) {
+  PersistentArrayIterator &operator+=(const difference_type difference) {
     CONTRACT_EXPECT(verifyOffset(difference));
     currentIndex_ += difference;
     return *this;
   }
 
-  PersistentArrayIterator &operator-=(const Difference difference) { return *this += -difference; }
+  PersistentArrayIterator &operator-=(const difference_type difference) {
+    return *this += -difference;
+  }
 
-  [[nodiscard]] PersistentArrayIterator operator+(const Difference difference) {
+  [[nodiscard]] PersistentArrayIterator operator+(const difference_type difference) {
     PersistentArrayIterator tmp = *this;
     return tmp += difference;
   }
 
-  [[nodiscard]] PersistentArrayIterator operator-(const Difference difference) {
+  [[nodiscard]] PersistentArrayIterator operator-(const difference_type difference) {
     PersistentArrayIterator tmp = *this;
     return tmp -= difference;
   }
 
-  [[nodiscard]] Difference operator-(const PersistentArrayIterator &other) const {
+  [[nodiscard]] difference_type operator-(const PersistentArrayIterator &other) const {
     return currentIndex_ - other.currentIndex_;
   }
 
@@ -444,7 +450,7 @@ public:
   }
 
 private:
-  [[nodiscard]] bool verifyOffset(const Difference difference) const noexcept {
+  [[nodiscard]] bool verifyOffset(const difference_type difference) const noexcept {
     if (difference > 0)
       return difference <= target_.size() - currentIndex_;
     return -difference <= currentIndex_;
@@ -468,10 +474,10 @@ namespace std {
 /// Specialization for std::iterator_traits
 template <class T> struct iterator_traits<Persistence::PersistentArrayIterator<T>> {
   using iterator_category = random_access_iterator_tag;
-  using value_type = typename Persistence::PersistentArrayIterator<T>::Value;
-  using pointer = typename Persistence::PersistentArrayIterator<T>::Pointer;
-  using reference = typename Persistence::PersistentArrayIterator<T>::Reference;
-  using difference_type = typename Persistence::PersistentArrayIterator<T>::Difference;
+  using value_type = typename Persistence::PersistentArrayIterator<T>::value_type;
+  using pointer = typename Persistence::PersistentArrayIterator<T>::pointer;
+  using reference = typename Persistence::PersistentArrayIterator<T>::reference;
+  using difference_type = typename Persistence::PersistentArrayIterator<T>::difference_type;
 };
 } // namespace std
 

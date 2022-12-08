@@ -35,6 +35,12 @@ TEST(PersistentArrayTests, TestValueConstructor) {
   EXPECT_NO_FATAL_FAILURE(checkElementsAre(test, {100, 100, 100}));
 }
 
+TEST(PersistentArrayTests, TestFrontBack) {
+  const PersistentArray<int> test{1, 2, 3, 4, 5};
+  EXPECT_EQ(test.front(), 1);
+  EXPECT_EQ(test.back(), 5);
+}
+
 TEST(PersistentArrayTests, TestSetValue) {
   constexpr auto elementCount = 3;
   const PersistentArray<int> v0(elementCount, 100);
