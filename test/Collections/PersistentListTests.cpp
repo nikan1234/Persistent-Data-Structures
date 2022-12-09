@@ -6,7 +6,7 @@ using namespace Persistence;
 
 // check that the version order is determined correctly
 TEST(PersistentListTests, TestOrder) { 
-	ListOrder order; 
+	PersistenceListOrder order; 
 	ASSERT_EQ(order.add(1), 1);
     ASSERT_EQ(order.add(1), 2);
     ASSERT_EQ(order.add(1), 3);
@@ -24,20 +24,20 @@ TEST(PersistentListTests, TestOrder) {
 
 // check that no more than ListNode::MAX_SIZE_FAT_NODE will be added to one node
 TEST(PersistentListTests, TestAddNode) { 
-    std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>(); 
+    std::shared_ptr<PersistenceListOrder> listOrder = std::make_shared<PersistenceListOrder>(); 
     listOrder->add(1);
-    ListNode<int> listNode(1, 10, nullptr, nullptr, CmpByListVersion(listOrder)); 
-    for (int i = 1; i < ListNode<int>::MAX_SIZE_FAT_NODE; ++i) {
+    PersistenceListNode<int> listNode(1, 10, nullptr, nullptr, PersistenceCmpByListVersion(listOrder)); 
+    for (int i = 1; i < PersistenceListNode<int>::MAX_SIZE_FAT_NODE; ++i) {
       ASSERT_EQ(listNode.add(listOrder->add(i), i), true);
     }
-    ASSERT_EQ(listNode.add(listOrder->add(ListNode<int>::MAX_SIZE_FAT_NODE), 10), false);
+    ASSERT_EQ(listNode.add(listOrder->add(PersistenceListNode<int>::MAX_SIZE_FAT_NODE), 10), false);
 }
 
 // we check that in one node the value is correctly searched for by version
 TEST(PersistentListTests, TestFindNode) {
-  std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
+  std::shared_ptr<PersistenceListOrder> listOrder = std::make_shared<PersistenceListOrder>();
   listOrder->add(1);
-  ListNode<int> listNode(1, 10, nullptr, nullptr, CmpByListVersion(listOrder));
+  PersistenceListNode<int> listNode(1, 10, nullptr, nullptr, PersistenceCmpByListVersion(listOrder));
   listNode.add(listOrder->add(1), 11); // 2
   listNode.add(listOrder->add(1), 12); // 3
   listNode.add(listOrder->add(2), 13); // 4
@@ -50,7 +50,7 @@ TEST(PersistentListTests, TestFindNode) {
   ASSERT_EQ(listNode.find(7), 13);
   ASSERT_EQ(listNode.find(8), 15);
 
-  ListNode<int> listNode1(3, 10, nullptr, nullptr, CmpByListVersion(listOrder));
+  PersistenceListNode<int> listNode1(3, 10, nullptr, nullptr, PersistenceCmpByListVersion(listOrder));
   listNode1.add(7, 11);
   ASSERT_EQ(listNode1.find(4), 10);
 }
@@ -168,9 +168,9 @@ TEST(PersistentListTests, TestUndoList) {
 
 // iterator dereference test
 TEST(PersistentListTests, TestIteratorValueTest) {
-  std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
+  std::shared_ptr<PersistenceListOrder> listOrder = std::make_shared<PersistenceListOrder>();
   listOrder->add(1);
-  ListIterator<int> iterator(1, std::make_shared<ListNode<int>>(1, 10, nullptr, nullptr, CmpByListVersion(listOrder)));
+  PersistenceListIterator<int> iterator(1, std::make_shared<PersistenceListNode<int>>(1, 10, nullptr, nullptr, PersistenceCmpByListVersion(listOrder)));
   ASSERT_EQ(*iterator, 10);
 }
 

@@ -3,6 +3,12 @@
 
 #include <Undo/UndoRedoManager.h>
 
+/*! \mainpage Persistent-Data-Structures
+ *
+ * This library with Persistence.PersistentArray, Persistence.PersistentList, Persistence.PersistentHashMap
+ */
+
+/// namespace Persistence
 namespace Persistence {
 template <class Collection>
 class UndoablePersistentCollection : public Undo::IUndoable<Collection> {

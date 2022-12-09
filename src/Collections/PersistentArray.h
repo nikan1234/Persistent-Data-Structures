@@ -367,7 +367,7 @@ template <class T>
   return !(lhs == rhs);
 }
 
-/// Iterator class for @PersistentArray
+/// Iterator class for Persistence.PersistentArray
 template <class T> class PersistentArrayIterator final {
   friend class PersistentArray<T>;
   using PositionIndex = std::size_t;
