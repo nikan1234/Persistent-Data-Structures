@@ -359,7 +359,7 @@ private:
   /// @param size      - length of this version of the list
   PersistentList(int version, std::shared_ptr<ListOrder> listOrder, std::shared_ptr<ListNode <T>> head, std::shared_ptr<ListNode<T>> tail, size_t size,
                  Undo::UndoRedoManager<PersistentList> undoRedoManager)
-      : UndoablePersistentCollection<PersistentList<T>>(undoRedoManager), version_(version), listOrder_(listOrder),
+      : UndoablePersistentCollection<PersistentList<T>>(std::move(undoRedoManager)), version_(version), listOrder_(listOrder),
         head_(head), tail_(tail), size_(size) {
   }
   
@@ -368,15 +368,15 @@ private:
   /// @return list with version_ new_version, size_ size and current head_ and tail_
   PersistentList<T> getChildren(int new_version, size_t size) const {
     const auto undo = [version = version_, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size_](auto manager) {
-      return PersistentList{version, listOrder, head, tail, size_undo, manager};
+      return PersistentList{version, listOrder, head, tail, size_undo, std::move(manager)};
     };
 
     const auto redo = [version = new_version, listOrder = listOrder_, head = head_, tail = tail_, size_undo = size](auto manager) {
-      return PersistentList{version, listOrder, head, tail, size_undo, manager};
+      return PersistentList{version, listOrder, head, tail, size_undo, std::move(manager)};
     };
     Undo::UndoRedoManager<PersistentList> newUndoRedoManager =
         undoManager().pushUndo(Undo::createAction<PersistentList>(undo, redo));
-    return PersistentList<T>(new_version, listOrder_, head_, tail_, size, newUndoRedoManager);
+    return PersistentList<T>(new_version, listOrder_, head_, tail_, size, std::move(newUndoRedoManager));
   }
 
   /// @param version - version
@@ -557,13 +557,13 @@ public:
 
   /// add value to head
   /// @param value - value to add
-  PersistentList push_front(const T &value) {
+  PersistentList pushFront(const T &value) {
       return insert(0, value);
   }
 
   /// add value to tail
   /// @param value - value to add
-  PersistentList push_back(const T &value) {
+  PersistentList pushBack(const T &value) {
     int new_version = listOrder_->add(version_);
     auto last = tail_->getLast(version_);
     auto next = tail_;
@@ -574,10 +574,10 @@ public:
   }
 
   /// remove from head
-  PersistentList pop_front() { return erase(0); }
+  PersistentList popFront() { return erase(0); }
 
   /// remove from tail
-  PersistentList pop_back() { return erase(size_ - 1); }
+  PersistentList popBack() { return erase(size_ - 1); }
 
   ListIterator<T> begin() const { return ListIterator<T>(version_, head_->getNext(version_)); }
 

@@ -1,8 +1,9 @@
 #include <Collections/PersistentArray.h>
 
-#include "OperatorsCountingElement.h"
+#include "../TestUtils/OperatorsCountingElement.h"
 
 #include <gtest/gtest.h>
+#include <numeric>
 
 using namespace Persistence;
 
@@ -244,6 +245,28 @@ TEST(PersistentArrayTests, TestNoLeaks) {
     }
     EXPECT_EQ(UnitTests::OperatorsCountingElement::destructorCalls(), 3);
     UnitTests::OperatorsCountingElement::reset();
+  }
+}
+
+///iterator
+TEST(PersistentArrayTests, TestIterator1) {
+  PersistentArray<int> test{1, 2, 3, 4};
+  auto test1 = test.pushBack(5);
+  auto test2 = test.popBack();
+  auto test3 = test2.undo();
+  EXPECT_EQ(std::accumulate(test.begin(), test.end(), 0), 10);
+  EXPECT_EQ(std::accumulate(test1.begin(), test1.end(), 0), 15);
+  EXPECT_EQ(std::accumulate(test2.begin(), test2.end(), 0), 6);
+  EXPECT_EQ(std::accumulate(test3.begin(), test3.end(), 0), 10);
+  EXPECT_EQ(std::accumulate(test3.begin(), test3.end(), 0), 10);
+}
+
+TEST(PersistentArrayTests, TestIterator2) {
+  PersistentArray<double> test{1};
+  EXPECT_EQ(std::accumulate(test.begin(), test.end(), 0), 1);
+  for (int i = 0; i < 100; ++i) {
+    test.pushBack(0);
+    EXPECT_EQ(std::accumulate(test.begin(), test.end(), 0), 1);
   }
 }
 

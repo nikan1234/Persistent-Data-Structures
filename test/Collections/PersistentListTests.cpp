@@ -5,7 +5,7 @@
 using namespace Persistence;
 
 // check that the version order is determined correctly
-TEST(PersistentListTests, Order) { 
+TEST(PersistentListTests, TestOrder) { 
 	ListOrder order; 
 	ASSERT_EQ(order.add(1), 1);
     ASSERT_EQ(order.add(1), 2);
@@ -23,7 +23,7 @@ TEST(PersistentListTests, Order) {
 }
 
 // check that no more than ListNode::MAX_SIZE_FAT_NODE will be added to one node
-TEST(PersistentListTests, AddNode) { 
+TEST(PersistentListTests, TestAddNode) { 
     std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>(); 
     listOrder->add(1);
     ListNode<int> listNode(1, 10, nullptr, nullptr, CmpByListVersion(listOrder)); 
@@ -34,7 +34,7 @@ TEST(PersistentListTests, AddNode) {
 }
 
 // we check that in one node the value is correctly searched for by version
-TEST(PersistentListTests, FindNode) {
+TEST(PersistentListTests, TestFindNode) {
   std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
   listOrder->add(1);
   ListNode<int> listNode(1, 10, nullptr, nullptr, CmpByListVersion(listOrder));
@@ -56,8 +56,8 @@ TEST(PersistentListTests, FindNode) {
 }
 
 // test to find an element in a list
-TEST(PersistentListTests, FindList) {
-  const PersistentList<int> test({1, 2, 3, 4});
+TEST(PersistentListTests, TestFindList) {
+  const PersistentList<int> test{1, 2, 3, 4};
   ASSERT_EQ(test.find(0), 1);
   ASSERT_EQ(test.find(1), 2);
   ASSERT_EQ(test.find(2), 3);
@@ -65,7 +65,7 @@ TEST(PersistentListTests, FindList) {
 }
 
 // index test
-TEST(PersistentListTests, SetList) {
+TEST(PersistentListTests, TestSetList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
   auto v3 = v1.set(1, -2);
@@ -83,7 +83,7 @@ TEST(PersistentListTests, SetList) {
 }
 
 // deletion test
-TEST(PersistentListTests, EraseList) {
+TEST(PersistentListTests, TestEraseList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.erase(1);
   auto v3 = v1.erase(2);
@@ -108,7 +108,7 @@ TEST(PersistentListTests, EraseList) {
 }
 
 // list insertion test
-TEST(PersistentListTests, InsertList) {
+TEST(PersistentListTests, TestInsertList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
   auto v3 = v1.insert(1, 6);
@@ -147,7 +147,7 @@ TEST(PersistentListTests, InsertList) {
 }
 
 // undo redo test
-TEST(PersistentListTests, UndoList) {
+TEST(PersistentListTests, TestUndoList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
   auto v2_undo = v2.undo();
@@ -167,7 +167,7 @@ TEST(PersistentListTests, UndoList) {
 }
 
 // iterator dereference test
-TEST(PersistentListTests, IteratorValueTest) {
+TEST(PersistentListTests, TestIteratorValueTest) {
   std::shared_ptr<ListOrder> listOrder = std::make_shared<ListOrder>();
   listOrder->add(1);
   ListIterator<int> iterator(1, std::make_shared<ListNode<int>>(1, 10, nullptr, nullptr, CmpByListVersion(listOrder)));
@@ -175,7 +175,7 @@ TEST(PersistentListTests, IteratorValueTest) {
 }
 
 // iterator traversal test
-TEST(PersistentListTests, IteratorSumList) {
+TEST(PersistentListTests, TestIteratorSumList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
   //                v1 {1, 2, 3, 4}
@@ -194,7 +194,7 @@ TEST(PersistentListTests, IteratorSumList) {
 }
 
 // backtracking test with iterator
-TEST(PersistentListTests, ReverseIteratorSumList) {
+TEST(PersistentListTests, TestReverseIteratorSumList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
   //                v1 {1, 2, 3, 4}
@@ -213,7 +213,7 @@ TEST(PersistentListTests, ReverseIteratorSumList) {
 }
 
 // test for postfix, prefix for list iterator
-TEST(PersistentListTests, PostfixPrefixIteratorList) {
+TEST(PersistentListTests, TestPostfixPrefixIteratorList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.set(0, -1);
   //                v1 {1, 2, 3, 4}
@@ -226,7 +226,7 @@ TEST(PersistentListTests, PostfixPrefixIteratorList) {
 }
 
 // list length test
-TEST(PersistentListTests, SizeList) {
+TEST(PersistentListTests, TestSizeList) {
   PersistentList<int> v1({1, 2, 3, 4});
   auto v2 = v1.insert(1, 5);
   auto v2_undo = v2.undo();
@@ -246,10 +246,10 @@ TEST(PersistentListTests, SizeList) {
 }
 
 // test for adding to the end and beginning of the list
-TEST(PersistentListTests, PustFrontPushBackList) {
+TEST(PersistentListTests, TestPustFrontPushBackList) {
   PersistentList<int> v1({1, 2, 3, 4});
-  auto v2 = v1.push_front(5);
-  auto v3 = v1.push_back(6);
+  auto v2 = v1.pushFront(5);
+  auto v3 = v1.pushBack(6);
   //                       v1 {1, 2, 3, 4}
   //                       /            \
   //         v2 {5, 1, 2, 3, 4}      v3 {1, 2, 3, 4, 6}
@@ -258,10 +258,10 @@ TEST(PersistentListTests, PustFrontPushBackList) {
 }
 
 // test to remove from the end and the beginning of the list
-TEST(PersistentListTests, PopFrontPopBackList) {
+TEST(PersistentListTests, TestPopFrontPopBackList) {
   PersistentList<int> v1({1, 2, 3, 4});
-  auto v2 = v1.pop_front();
-  auto v3 = v1.pop_back();
+  auto v2 = v1.popFront();
+  auto v3 = v1.popBack();
   //                       v1 {1, 2, 3, 4}
   //                       /            \
   //         v2 {2, 3, 4}      v3 {1, 2, 3}

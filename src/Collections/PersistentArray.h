@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <memory>
 #include <stack>
+#include <algorithm>
 
 namespace Persistence {
 
