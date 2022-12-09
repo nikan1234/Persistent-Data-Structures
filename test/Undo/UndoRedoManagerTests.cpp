@@ -21,13 +21,15 @@ public:
 
   void expectUndo() const {
     EXPECT_CALL(*this, applyUndo(_)).WillOnce(Invoke([](auto manager) {
-      return FakeUndoableCollection{FakeUndoableCollection::Type::ReturnedFromUndo, manager};
+      return FakeUndoableCollection{FakeUndoableCollection::Type::ReturnedFromUndo,
+                                    std::move(manager)};
     }));
   }
 
   void expectRedo() const {
     EXPECT_CALL(*this, applyRedo(_)).WillOnce(Invoke([](auto manager) {
-      return FakeUndoableCollection{FakeUndoableCollection::Type::ReturnedFromRedo, manager};
+      return FakeUndoableCollection{FakeUndoableCollection::Type::ReturnedFromRedo,
+                                    std::move(manager)};
     }));
   }
 

@@ -192,7 +192,7 @@ public:
   }
 
   ~PersistentArray() override {
-    while (node_)
+    while (node_ && node_.use_count() == 1)
       node_ = node_->reparent(nullptr);
   }
 

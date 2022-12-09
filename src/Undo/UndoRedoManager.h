@@ -73,7 +73,7 @@ template <class Collection> class UndoRedoManager final : public IUndoable<Colle
     UndoRedoStack &operator=(UndoRedoStack &&) noexcept = default;
 
     ~UndoRedoStack() {
-      while (top_)
+      while (top_ && top_.use_count() == 1)
         top_ = std::move(top_->next);
     }
 
