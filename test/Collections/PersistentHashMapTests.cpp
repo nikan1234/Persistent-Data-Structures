@@ -69,6 +69,20 @@ TEST(PersistentHashMapTests, TestErase) {
   EXPECT_THAT(v5, UnorderedElementsAre());
 }
 
+TEST(PersistentHashMapTests, TestFind) {
+  const PersistentHashMap<std::string, int> v0{{"a", 4}};
+
+  const auto v1 = v0.insert({"a", 5}).insert({"b", 6});
+  const auto v2 = v1.erase("b");
+
+  EXPECT_EQ(v0.find("a"), 4);
+  EXPECT_EQ(v0.find("b"), std::nullopt);
+  EXPECT_EQ(v1.find("a"), 5);
+  EXPECT_EQ(v1.find("b"), 6);
+  EXPECT_EQ(v2.find("a"), 5);
+  EXPECT_EQ(v2.find("b"), std::nullopt);
+}
+
 TEST(PersistentHashMapTests, UndoRedo) {
   const PersistentHashMap<std::string, int> v0{{"x", 1}, {"y", 2}};
   using ValueType = decltype(v0)::value_type;

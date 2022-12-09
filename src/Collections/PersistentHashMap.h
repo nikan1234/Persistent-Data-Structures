@@ -103,8 +103,8 @@ public:
     if (!hamtRoot_)
       return std::nullopt;
 
-    if (const auto value = std::dynamic_pointer_cast<const Detail::HamtValueNode<HamtTraits>>(
-            hamtRoot_->accept(searcher)))
+    const auto [_, found] = hamtRoot_->accept(searcher);
+    if (auto value = std::dynamic_pointer_cast<const Detail::HamtValueNode<HamtTraits>>(found))
       return value->value();
 
     return std::nullopt;
